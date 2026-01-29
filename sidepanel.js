@@ -400,12 +400,12 @@ async function addPrompt() {
 
 // 编辑提示词
 async function editPrompt(id) {
-  const prompt = prompts.find((p) => p.id === id);
-  if (!prompt) return;
+  const targetPrompt = prompts.find((p) => p.id === id);
+  if (!targetPrompt) return;
 
-  const newText = prompt("编辑提示词:", prompt.text);
+  const newText = prompt("编辑提示词:", targetPrompt.text);
   if (newText && newText.trim()) {
-    prompt.text = newText.trim();
+    targetPrompt.text = newText.trim();
     await saveData();
     renderAll();
   }
