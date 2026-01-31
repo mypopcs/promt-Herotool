@@ -8,7 +8,7 @@
   </head>
   <body>
     <div class="container">
-      <!-- 头部 -->
+      <!-- 头部
       <div class="header">
         <h1>🎨 AI提示词管理器</h1>
         <button class="icon-btn" id="settingsBtn" title="设置">
@@ -24,7 +24,7 @@
             <path d="M12 1v6m0 6v6m6-12h-6m-6 0H1m17 6h-6m-6 0H1"></path>
           </svg>
         </button>
-      </div>
+      </div> -->
 
       <!-- 标签导航 -->
       <div class="tabs">
@@ -67,16 +67,21 @@
         <!-- 使用提示词标签页 -->
         <div class="tab-content active" id="useTab">
           <!-- 已选择的提示词 -->
-          <div
-            class="selected-section"
-            id="selectedSection"
-            style="display: none"
-          >
+          <div class="selected-section" id="selectedSection">
             <div class="selected-header">
               <h3>已选择的提示词</h3>
               <button class="text-btn" id="clearBtn">清空</button>
             </div>
-            <div class="selected-tags" id="selectedTags"></div>
+            <div class="tag-input-container" id="tagInputContainer">
+              <div class="selected-tags" id="selectedTags"></div>
+              <input
+                type="text"
+                id="tagInput"
+                class="tag-input"
+                placeholder="输入提示词，按回车添加标签..."
+                autocomplete="off"
+              />
+            </div>
             <button class="copy-btn" id="copyBtn">
               <svg
                 width="18"
@@ -118,15 +123,66 @@
 
         <!-- 管理设置标签页 -->
         <div class="tab-content" id="manageTab">
+          <!-- 添加提示词库 -->
+          <div class="manage-card">
+            <div class="input-group">
+              <input
+                type="text"
+                id="newLibraryInput"
+                placeholder="输入提示词库名称..."
+                class="form-input input-wd300"
+              />
+              <button class="add-btn" id="addLibraryBtn">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                添加提示词库
+              </button>
+            </div>
+          </div>
+
+          <!-- 提示词库管理表格 -->
+          <div class="manage-card">
+            <h3 class="card-title">提示词库管理</h3>
+            <div class="table-container">
+              <table class="manage-table" id="librariesTable">
+                <thead>
+                  <tr>
+                    <th>提示词库名</th>
+                    <th>内容统计</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="libraryList"></tbody>
+              </table>
+            </div>
+          </div>
+          <!-- 提示词库选择器 -->
+          <div class="manage-card">
+            <div class="library-selector-container">
+              <label for="librarySelector">当前提示词库:</label>
+              <select id="librarySelector" class="form-select">
+                <!-- 提示词库选项将通过JavaScript动态生成 -->
+              </select>
+            </div>
+          </div>
+
           <!-- 添加分类 -->
           <div class="manage-card">
-            <h3 class="card-title">添加分类</h3>
             <div class="input-group">
               <input
                 type="text"
                 id="newCategoryInput"
                 placeholder="输入分类名称..."
-                class="form-input"
+                class="form-input input-wd300"
               />
               <button class="add-btn" id="addCategoryBtn">
                 <svg
@@ -140,28 +196,53 @@
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                添加
+                添加分类
               </button>
             </div>
           </div>
 
-          <!-- 分类列表 -->
+          <!-- 分类管理表格 -->
           <div class="manage-card">
             <h3 class="card-title">分类管理</h3>
-            <div id="categoriesList"></div>
+            <div class="table-container">
+              <table class="manage-table" id="categoriesTable">
+                <thead>
+                  <tr>
+                    <th>分类名</th>
+                    <th>提示词数量</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="categoriesList"></tbody>
+              </table>
+            </div>
           </div>
 
           <!-- 添加提示词 -->
           <div class="manage-card">
             <h3 class="card-title">添加提示词</h3>
-            <select id="promptCategorySelect" class="form-select">
-              <option value="">选择分类...</option>
-            </select>
             <div class="input-group">
+              <select id="promptCategorySelect" class="form-select input-wd240">
+                <option value="">选择分类...</option>
+              </select>
               <input
                 type="text"
                 id="newPromptInput"
                 placeholder="输入提示词内容..."
+                class="form-input input-wd300"
+              />
+              <input
+                type="text"
+                id="newPromptChinese"
+                placeholder="输入中文解释..."
+                class="form-input"
+              />
+            </div>
+            <div class="input-group" style="margin-top: 8px">
+              <input
+                type="text"
+                id="newPromptRemark"
+                placeholder="输入备注..."
                 class="form-input"
               />
               <button class="add-btn" id="addPromptBtn">
@@ -176,13 +257,115 @@
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                添加
+                添加提示词
               </button>
             </div>
           </div>
 
-          <!-- 提示词管理列表 -->
-          <div id="promptsManageList"></div>
+          <!-- 提示词管理表格 -->
+          <div class="manage-card">
+            <h3 class="card-title">提示词管理</h3>
+
+            <!-- 筛选控件 -->
+            <div class="filter-controls">
+              <div class="filter-group">
+                <select id="promptCategoryFilter" class="form-select">
+                  <option value="">全部分类</option>
+                </select>
+              </div>
+              <div class="search-group">
+                <input
+                  type="text"
+                  id="promptSearch"
+                  placeholder="搜索提示词..."
+                  class="form-input"
+                />
+              </div>
+              <button
+                class="delete-selected-btn"
+                id="deleteSelectedBtn"
+                style="display: none"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path
+                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                  ></path>
+                </svg>
+                删除选中
+              </button>
+            </div>
+
+            <div class="table-container">
+              <table class="manage-table" id="promptsTable">
+                <thead>
+                  <tr>
+                    <th style="width: 40px; text-align: center">
+                      <input type="checkbox" id="selectAllPrompts" />
+                    </th>
+                    <th>提示词</th>
+                    <th>中文解释</th>
+                    <th>备注</th>
+                    <th>所属分类</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="promptsManageList"></tbody>
+              </table>
+            </div>
+
+            <!-- 分页控件 -->
+            <div class="pagination-controls">
+              <div class="pagination-info">
+                显示 <span id="paginationInfo">0-0 共 0</span>
+              </div>
+              <div class="pagination-actions">
+                <select
+                  id="pageSize"
+                  class="form-select"
+                  style="width: auto; margin-bottom: 0"
+                >
+                  <option value="20">20条/页</option>
+                  <option value="50">50条/页</option>
+                  <option value="100">100条/页</option>
+                </select>
+                <button class="pagination-btn" id="prevPage" disabled>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                </button>
+                <span class="page-info"
+                  >第 <span id="currentPage">1</span> 页</span
+                >
+                <button class="pagination-btn" id="nextPage" disabled>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -206,6 +389,129 @@
           </svg>
         </button>
       </div>
+    </div>
+
+    <!-- 编辑分类弹窗 -->
+    <div id="editCategoryModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>编辑分类</h3>
+          <button id="closeEditCategoryModal" class="modal-close">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editCategoryId" />
+          <div class="input-group">
+            <label for="editCategoryName">分类名称</label>
+            <input
+              type="text"
+              id="editCategoryName"
+              class="form-input"
+              placeholder="输入分类名称"
+            />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="cancelEditCategoryBtn" class="btn btn-secondary">
+            取消
+          </button>
+          <button id="saveEditCategoryBtn" class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑提示词弹窗 -->
+    <div id="editPromptModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>编辑提示词</h3>
+          <button id="closeEditPromptModal" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editPromptId" />
+          <div class="input-group">
+            <label for="editPromptText">提示词内容</label>
+            <input
+              type="text"
+              id="editPromptText"
+              class="form-input"
+              placeholder="输入提示词内容"
+            />
+          </div>
+          <div class="input-group">
+            <label for="editPromptChinese">中文解释</label>
+            <input
+              type="text"
+              id="editPromptChinese"
+              class="form-input"
+              placeholder="输入中文解释"
+            />
+          </div>
+          <div class="input-group">
+            <label for="editPromptRemark">备注</label>
+            <input
+              type="text"
+              id="editPromptRemark"
+              class="form-input"
+              placeholder="输入备注"
+            />
+          </div>
+          <div class="input-group">
+            <label for="editPromptCategory">所属分类</label>
+            <select id="editPromptCategory" class="form-select">
+              <!-- 分类选项将通过JavaScript动态生成 -->
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="cancelEditPromptBtn" class="btn btn-secondary">
+            取消
+          </button>
+          <button id="saveEditPromptBtn" class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑提示词库弹窗 -->
+    <div id="editLibraryModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>编辑提示词库</h3>
+          <button id="closeEditLibraryModal" class="modal-close">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editLibraryId" />
+          <div class="input-group">
+            <label for="editLibraryName">提示词库名称</label>
+            <input
+              type="text"
+              id="editLibraryName"
+              class="form-input"
+              placeholder="输入提示词库名称"
+            />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="cancelEditLibraryBtn" class="btn btn-secondary">
+            取消
+          </button>
+          <button id="saveEditLibraryBtn" class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右键菜单 -->
+    <div id="contextMenu" class="context-menu">
+      <div class="context-menu-header">替换为同分类提示词</div>
+      <div class="context-menu-items" id="contextMenuItems"></div>
+    </div>
+
+    <!-- 提示信息框 -->
+    <div id="toast" class="toast">
+      <div class="toast-content" id="toastContent"></div>
     </div>
 
     <script src="sidepanel.js"></script>

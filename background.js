@@ -73,39 +73,86 @@ async function syncToFeishu() {
     "feishuSpreadsheetToken",
     "feishuSheetId",
   ]);
-  const data = await chrome.storage.local.get(["categories", "prompts"]);
+  const data = await chrome.storage.local.get(["libraries"]);
 
   if (!config.feishuSpreadsheetToken || !config.feishuSheetId) {
     console.log("飞书表格配置未设置");
     return;
   }
 
+  if (!data.libraries || data.libraries.length === 0) {
+    console.log("没有提示词库数据");
+    return;
+  }
+
   try {
     // 准备表格数据
-    const rows = [["ID", "分类ID", "分类名称", "提示词文本", "更新时间"]];
+    const rows = [
+      [
+        "提示词库ID",
+        "提示词库名称",
+        "分类ID",
+        "分类名称",
+        "提示词ID",
+        "提示词文本",
+        "中文解释",
+        "备注",
+        "更新时间",
+      ],
+    ];
 
-    // 添加分类数据
-    if (data.categories) {
-      data.categories.forEach((cat) => {
-        rows.push([cat.id, "", cat.name, "", new Date().toISOString()]);
-      });
-    }
+    // 遍历所有提示词库
+    data.libraries.forEach((library) => {
+      // 添加提示词库信息
+      rows.push([
+        library.id,
+        library.name,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        new Date().toISOString(),
+      ]);
 
-    // 添加提示词数据
-    if (data.prompts) {
-      data.prompts.forEach((prompt) => {
-        const category = data.categories?.find(
-          (c) => c.id === prompt.categoryId,
-        );
-        rows.push([
-          prompt.id,
-          prompt.categoryId,
-          category?.name || "",
-          prompt.text,
-          new Date().toISOString(),
-        ]);
-      });
-    }
+      // 添加分类数据
+      if (library.categories) {
+        library.categories.forEach((cat) => {
+          rows.push([
+            library.id,
+            library.name,
+            cat.id,
+            cat.name,
+            "",
+            "",
+            "",
+            "",
+            new Date().toISOString(),
+          ]);
+        });
+      }
+
+      // 添加提示词数据
+      if (library.prompts) {
+        library.prompts.forEach((prompt) => {
+          const category = library.categories?.find(
+            (c) => c.id === prompt.categoryId,
+          );
+          rows.push([
+            library.id,
+            library.name,
+            prompt.categoryId,
+            category?.name || "",
+            prompt.id,
+            prompt.text,
+            prompt.chinese || "",
+            prompt.remark || "",
+            new Date().toISOString(),
+          ]);
+        });
+      }
+    });
 
     // 调用飞书API更新表格
     const response = await fetch(
@@ -119,7 +166,7 @@ async function syncToFeishu() {
         body: JSON.stringify({
           valueRanges: [
             {
-              range: `${config.feishuSheetId}!A1:E${rows.length}`,
+              range: `${config.feishuSheetId}!A1:I${rows.length}`,
               values: rows,
             },
           ],
@@ -169,7 +216,7 @@ async function syncFromFeishu() {
 
   try {
     const response = await fetch(
-      `https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/${config.feishuSpreadsheetToken}/values/${config.feishuSheetId}!A1:E1000`,
+      `https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/${config.feishuSpreadsheetToken}/values/${config.feishuSheetId}!A1:I1000`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -180,29 +227,63 @@ async function syncFromFeishu() {
     const result = await response.json();
     if (result.code === 0 && result.data.values) {
       const rows = result.data.values;
-      const categories = [];
-      const prompts = [];
+      const libraries = [];
+      const libraryMap = new Map();
 
       // 跳过标题行
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
-        if (row[2] && !row[3]) {
-          // 分类行
-          categories.push({
-            id: row[0],
-            name: row[2],
-          });
-        } else if (row[3]) {
-          // 提示词行
-          prompts.push({
-            id: row[0],
-            categoryId: row[1],
-            text: row[3],
-          });
+        const libraryId = row[0];
+        const libraryName = row[1];
+
+        // 如果是新提示词库，创建它
+        if (!libraryMap.has(libraryId)) {
+          const library = {
+            id: libraryId,
+            name: libraryName,
+            categories: [],
+            prompts: [],
+          };
+          libraries.push(library);
+          libraryMap.set(libraryId, library);
+        }
+
+        const library = libraryMap.get(libraryId);
+        const categoryId = row[2];
+        const categoryName = row[3];
+        const promptId = row[4];
+        const promptText = row[5];
+        const promptChinese = row[6];
+        const promptRemark = row[7];
+
+        // 添加分类
+        if (categoryId && categoryName && !promptId) {
+          if (!library.categories.find((c) => c.id === categoryId)) {
+            library.categories.push({
+              id: categoryId,
+              name: categoryName,
+            });
+          }
+        }
+
+        // 添加提示词
+        if (promptId && promptText) {
+          if (!library.prompts.find((p) => p.id === promptId)) {
+            library.prompts.push({
+              id: promptId,
+              categoryId: categoryId,
+              text: promptText,
+              chinese: promptChinese || "",
+              remark: promptRemark || "",
+            });
+          }
         }
       }
 
-      await chrome.storage.local.set({ categories, prompts });
+      await chrome.storage.local.set({
+        libraries,
+        currentLibraryId: libraries[0]?.id || "",
+      });
       console.log("从飞书同步成功");
     }
   } catch (error) {
