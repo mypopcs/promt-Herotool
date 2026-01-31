@@ -1213,6 +1213,34 @@ function bindEvents() {
     });
   });
 
+  // 侧边栏折叠功能
+  const sidebarToggle = document.getElementById("sidebarToggle");
+  const sidebar = document.getElementById("sidebar");
+  if (sidebarToggle && sidebar) {
+    sidebarToggle.addEventListener("click", () => {
+      sidebar.classList.toggle("collapsed");
+    });
+  }
+
+  // 管理页面切换功能
+  document.querySelectorAll(".sidebar-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      const page = item.dataset.page;
+
+      // 更新侧边栏项激活状态
+      document
+        .querySelectorAll(".sidebar-item")
+        .forEach((i) => i.classList.remove("active"));
+      item.classList.add("active");
+
+      // 切换管理页面
+      document
+        .querySelectorAll(".manage-page")
+        .forEach((p) => p.classList.remove("active"));
+      document.getElementById(page + "Page").classList.add("active");
+    });
+  });
+
   // 使用标签页事件
   document.getElementById("clearBtn").addEventListener("click", clearSelection);
   document.getElementById("copyBtn").addEventListener("click", copyPrompts);
