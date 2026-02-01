@@ -509,9 +509,8 @@ function renderManageTab() {
 
 // 渲染提示词库选择器
 function renderLibrarySelector() {
-  const select = document.getElementById("librarySelector");
-
-  if (!select) return;
+  const selectCategories = document.getElementById("librarySelectorCategories");
+  const selectPrompts = document.getElementById("librarySelectorPrompts");
 
   const html = libraries
     .map(
@@ -520,7 +519,13 @@ function renderLibrarySelector() {
     )
     .join("");
 
-  select.innerHTML = html;
+  if (selectCategories) {
+    selectCategories.innerHTML = html;
+  }
+
+  if (selectPrompts) {
+    selectPrompts.innerHTML = html;
+  }
 }
 
 // 渲染提示词库列表
@@ -1254,10 +1259,22 @@ function bindEvents() {
     .addEventListener("click", addCategory);
   document.getElementById("addPromptBtn").addEventListener("click", addPrompt);
 
-  // 提示词库选择器事件
-  const librarySelector = document.getElementById("librarySelector");
-  if (librarySelector) {
-    librarySelector.addEventListener("change", (e) => {
+  // 提示词库选择器事件 - 分类管理页面
+  const librarySelectorCategories = document.getElementById(
+    "librarySelectorCategories",
+  );
+  if (librarySelectorCategories) {
+    librarySelectorCategories.addEventListener("change", (e) => {
+      switchLibrary(e.target.value);
+    });
+  }
+
+  // 提示词库选择器事件 - 提示词管理页面
+  const librarySelectorPrompts = document.getElementById(
+    "librarySelectorPrompts",
+  );
+  if (librarySelectorPrompts) {
+    librarySelectorPrompts.addEventListener("change", (e) => {
       switchLibrary(e.target.value);
     });
   }

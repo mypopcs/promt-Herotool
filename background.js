@@ -1,24 +1,71 @@
-// 飞书API配置
-const FEISHU_CONFIG = {
-  appId: "", // 在options页面配置
-  appSecret: "", // 在options页面配置
-  spreadsheetToken: "", // 在options页面配置
-  sheetId: "", // 在options页面配置
-};
+console.log("=== Background Script 开始加载 ===");
 
-// 初始化定时同步
+// 初始化
 chrome.runtime.onInstalled.addListener(() => {
+  console.log("=== 插件已安装/更新 ===");
+
   // 创建每天同步的定时任务
   chrome.alarms.create("dailySync", {
-    delayInMinutes: 1,
-    periodInMinutes: 24 * 60, // 每24小时
+    delayInMinutes: 1440, // 24小时
+    periodInMinutes: 1440,
   });
+
+  console.log("定时同步任务已创建");
 });
 
 // 监听定时任务
 chrome.alarms.onAlarm.addListener((alarm) => {
+  console.log("=== 定时任务触发 ===", alarm.name);
   if (alarm.name === "dailySync") {
-    syncToFeishu();
+    syncToFeishu().catch((err) => {
+      console.error("定时同步失败:", err);
+    });
+  }
+});
+
+// 监听快捷键命令
+chrome.commands.onCommand.addListener(async (command) => {
+  console.log("=== 快捷键触发 ===", command);
+  if (command === "toggle_sidepanel") {
+    try {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      await chrome.sidePanel.open({ windowId: tab.windowId });
+      console.log("侧边栏已打开");
+    } catch (error) {
+      console.error("打开侧边栏失败:", error);
+    }
+  }
+});
+
+// 监听来自其他页面的消息
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log("=== 收到消息 ===", request.action);
+
+  if (request.action === "syncToFeishu") {
+    syncToFeishu()
+      .then(() => {
+        console.log("同步到飞书成功");
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error("同步到飞书失败:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // 保持消息通道开启
+  } else if (request.action === "syncFromFeishu") {
+    syncFromFeishu()
+      .then(() => {
+        console.log("从飞书同步成功");
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error("从飞书同步失败:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // 保持消息通道开启
   }
 });
 
@@ -30,8 +77,7 @@ async function getFeishuAccessToken() {
   ]);
 
   if (!config.feishuAppId || !config.feishuAppSecret) {
-    console.log("飞书配置未设置");
-    return null;
+    throw new Error("飞书配置未设置");
   }
 
   try {
@@ -53,211 +99,304 @@ async function getFeishuAccessToken() {
     if (data.code === 0) {
       return data.tenant_access_token;
     } else {
-      console.error("获取飞书令牌失败:", data);
-      return null;
+      throw new Error(data.msg || "获取令牌失败");
     }
   } catch (error) {
     console.error("获取飞书令牌错误:", error);
-    return null;
+    throw error;
   }
 }
 
-// 同步数据到飞书
-async function syncToFeishu() {
-  console.log("开始同步到飞书...");
-
-  const token = await getFeishuAccessToken();
-  if (!token) return;
-
-  const config = await chrome.storage.local.get([
-    "feishuSpreadsheetToken",
-    "feishuSheetId",
-  ]);
-  const data = await chrome.storage.local.get(["libraries"]);
-
-  if (!config.feishuSpreadsheetToken || !config.feishuSheetId) {
-    console.log("飞书表格配置未设置");
-    return;
-  }
-
-  if (!data.libraries || data.libraries.length === 0) {
-    console.log("没有提示词库数据");
-    return;
-  }
-
+// 通过 Wiki API 获取多维表格的 app_token
+async function getBitableAppTokenFromWiki(token, wikiNodeId) {
   try {
-    // 准备表格数据
-    const rows = [
-      [
-        "提示词库ID",
-        "提示词库名称",
-        "分类ID",
-        "分类名称",
-        "提示词ID",
-        "提示词文本",
-        "中文解释",
-        "备注",
-        "更新时间",
-      ],
-    ];
+    const url = `https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token=${wikiNodeId}`;
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-    // 遍历所有提示词库
+    const result = await response.json();
+    if (result.code === 0 && result.data && result.data.node) {
+      const nodeType = result.data.node.obj_type;
+      if (nodeType !== "bitable") {
+        throw new Error(`该节点不是多维表格，类型为: ${nodeType}`);
+      }
+      const appToken = result.data.node.obj_token;
+      if (!appToken) {
+        throw new Error("无法获取多维表格的 app_token");
+      }
+      return appToken;
+    } else {
+      throw new Error(result.msg || "获取多维表格信息失败");
+    }
+  } catch (error) {
+    console.error("从 Wiki 获取 app_token 错误:", error);
+    throw error;
+  }
+}
+
+// 同步数据到飞书多维表格
+async function syncToFeishu() {
+  try {
+    const token = await getFeishuAccessToken();
+    const config = await chrome.storage.local.get([
+      "feishuAppId",
+      "feishuTableId",
+      "feishuWikiNodeId",
+    ]);
+
+    if (!config.feishuAppId || !config.feishuTableId) {
+      throw new Error("飞书多维表格配置未设置");
+    }
+
+    if (!config.feishuTableId.startsWith("tbl")) {
+      throw new Error("表格ID格式错误，应该以 tbl 开头");
+    }
+
+    let appToken = config.feishuAppId;
+    if (config.feishuWikiNodeId) {
+      try {
+        appToken = await getBitableAppTokenFromWiki(
+          token,
+          config.feishuWikiNodeId,
+        );
+      } catch (error) {
+        // 使用配置的 appId
+      }
+    }
+
+    const data = await chrome.storage.local.get(["libraries"]);
+    if (!data.libraries || data.libraries.length === 0) {
+      throw new Error("没有提示词库数据");
+    }
+
+    try {
+      await clearBitableRecords(token, appToken, config.feishuTableId);
+    } catch (error) {
+      // 表格可能为空，继续执行
+    }
+
+    const records = [];
     data.libraries.forEach((library) => {
-      // 添加提示词库信息
-      rows.push([
-        library.id,
-        library.name,
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        new Date().toISOString(),
-      ]);
+      records.push({
+        fields: {
+          提示词ID: "",
+          提示词: "",
+          中文解释: "",
+          备注: "提示词库",
+          分类ID: "",
+          分类名称: "",
+          提示词库ID: library.id || "",
+          提示词库名称: library.name || "",
+        },
+      });
 
-      // 添加分类数据
-      if (library.categories) {
-        library.categories.forEach((cat) => {
-          rows.push([
-            library.id,
-            library.name,
-            cat.id,
-            cat.name,
-            "",
-            "",
-            "",
-            "",
-            new Date().toISOString(),
-          ]);
+      if (library.categories && library.categories.length > 0) {
+        library.categories.forEach((category) => {
+          records.push({
+            fields: {
+              提示词ID: "",
+              提示词: "",
+              中文解释: "",
+              备注: "分类",
+              分类ID: category.id || "",
+              分类名称: category.name || "",
+              提示词库ID: library.id || "",
+              提示词库名称: library.name || "",
+            },
+          });
         });
       }
 
-      // 添加提示词数据
-      if (library.prompts) {
+      if (library.prompts && library.prompts.length > 0) {
         library.prompts.forEach((prompt) => {
           const category = library.categories?.find(
             (c) => c.id === prompt.categoryId,
           );
-          rows.push([
-            library.id,
-            library.name,
-            prompt.categoryId,
-            category?.name || "",
-            prompt.id,
-            prompt.text,
-            prompt.chinese || "",
-            prompt.remark || "",
-            new Date().toISOString(),
-          ]);
+          records.push({
+            fields: {
+              提示词ID: prompt.id || "",
+              提示词: prompt.text || "",
+              中文解释: prompt.chinese || "",
+              备注: prompt.remark || "",
+              分类ID: prompt.categoryId || "",
+              分类名称: category?.name || "",
+              提示词库ID: library.id || "",
+              提示词库名称: library.name || "",
+            },
+          });
         });
       }
     });
 
-    // 调用飞书API更新表格
-    const response = await fetch(
-      `https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/${config.feishuSpreadsheetToken}/values_batch_update`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          valueRanges: [
-            {
-              range: `${config.feishuSheetId}!A1:I${rows.length}`,
-              values: rows,
-            },
-          ],
-        }),
-      },
-    );
-
-    const result = await response.json();
-    if (result.code === 0) {
-      console.log("同步到飞书成功");
-      await chrome.storage.local.set({
-        lastSyncTime: Date.now(),
-        lastSyncStatus: "success",
-      });
-    } else {
-      console.error("同步到飞书失败:", result);
-      await chrome.storage.local.set({
-        lastSyncStatus: "failed",
-        lastSyncError: result.msg,
-      });
+    const batchSize = 500;
+    for (let i = 0; i < records.length; i += batchSize) {
+      const batch = records.slice(i, i + batchSize);
+      await insertBitableRecords(token, appToken, config.feishuTableId, batch);
     }
+
+    await chrome.storage.local.set({
+      lastSyncTime: Date.now(),
+      lastSyncStatus: "success",
+      lastSyncError: "",
+    });
   } catch (error) {
-    console.error("同步到飞书错误:", error);
+    console.error("飞书同步失败:", error.message);
     await chrome.storage.local.set({
       lastSyncStatus: "failed",
       lastSyncError: error.message,
     });
+    throw error;
   }
 }
 
-// 从飞书同步数据
-async function syncFromFeishu() {
-  console.log("开始从飞书同步...");
-
-  const token = await getFeishuAccessToken();
-  if (!token) return;
-
-  const config = await chrome.storage.local.get([
-    "feishuSpreadsheetToken",
-    "feishuSheetId",
-  ]);
-
-  if (!config.feishuSpreadsheetToken || !config.feishuSheetId) {
-    console.log("飞书表格配置未设置");
-    return;
-  }
-
+// 清空多维表格的所有记录
+async function clearBitableRecords(token, appToken, tableId) {
   try {
-    const response = await fetch(
-      `https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/${config.feishuSpreadsheetToken}/values/${config.feishuSheetId}!A1:I1000`,
-      {
+    // 1. 获取所有记录ID
+    let allRecordIds = [];
+    let hasMore = true;
+    let pageToken = undefined;
+
+    while (hasMore) {
+      const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records?page_size=500${pageToken ? `&page_token=${pageToken}` : ""}`;
+      const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
+      });
+
+      const result = await response.json();
+      if (result.code === 0) {
+        const recordIds = result.data.items.map((item) => item.record_id);
+        allRecordIds = allRecordIds.concat(recordIds);
+        hasMore = result.data.has_more;
+        pageToken = result.data.page_token;
+      } else {
+        throw new Error(result.msg || "获取记录失败");
+      }
+    }
+
+    // 2. 批量删除记录
+    if (allRecordIds.length > 0) {
+      const batchSize = 500;
+      for (let i = 0; i < allRecordIds.length; i += batchSize) {
+        const batch = allRecordIds.slice(i, i + batchSize);
+        const response = await fetch(
+          `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_delete`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ record_ids: batch }),
+          },
+        );
+
+        const result = await response.json();
+        if (result.code !== 0) {
+          throw new Error(result.msg || "删除记录失败");
+        }
+      }
+    }
+  } catch (error) {
+    console.error("清空记录错误:", error);
+    throw error;
+  }
+}
+
+// 批量插入多维表格记录
+async function insertBitableRecords(token, appToken, tableId, records) {
+  const apiUrl = `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`;
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ records: records }),
+    });
 
     const result = await response.json();
-    if (result.code === 0 && result.data.values) {
-      const rows = result.data.values;
-      const libraries = [];
-      const libraryMap = new Map();
+    if (result.code !== 0) {
+      throw new Error(result.msg || "插入记录失败");
+    }
 
-      // 跳过标题行
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        const libraryId = row[0];
-        const libraryName = row[1];
+    return result.data;
+  } catch (error) {
+    console.error("插入记录错误:", error);
+    throw error;
+  }
+}
 
-        // 如果是新提示词库，创建它
-        if (!libraryMap.has(libraryId)) {
-          const library = {
-            id: libraryId,
-            name: libraryName,
-            categories: [],
-            prompts: [],
-          };
-          libraries.push(library);
-          libraryMap.set(libraryId, library);
-        }
+// 从飞书多维表格同步数据
+async function syncFromFeishu() {
+  try {
+    const token = await getFeishuAccessToken();
+    const config = await chrome.storage.local.get([
+      "feishuAppToken",
+      "feishuTableId",
+    ]);
 
+    if (!config.feishuAppToken || !config.feishuTableId) {
+      throw new Error("飞书多维表格配置未设置");
+    }
+
+    let allRecords = [];
+    let hasMore = true;
+    let pageToken = undefined;
+
+    while (hasMore) {
+      const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.feishuAppToken}/tables/${config.feishuTableId}/records?page_size=500${pageToken ? `&page_token=${pageToken}` : ""}`;
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const result = await response.json();
+      if (result.code === 0) {
+        allRecords = allRecords.concat(result.data.items);
+        hasMore = result.data.has_more;
+        pageToken = result.data.page_token;
+      } else {
+        throw new Error(result.msg || "获取记录失败");
+      }
+    }
+
+    const libraries = [];
+    const libraryMap = new Map();
+
+    allRecords.forEach((record) => {
+      const fields = record.fields;
+      const dataType = fields["备注"];
+      const libraryId = fields["提示词库ID"];
+      const libraryName = fields["提示词库名称"];
+
+      if (libraryId && !libraryMap.has(libraryId)) {
+        const library = {
+          id: libraryId,
+          name: libraryName || "未命名提示词库",
+          categories: [],
+          prompts: [],
+        };
+        libraries.push(library);
+        libraryMap.set(libraryId, library);
+      }
+
+      if (dataType === "分类") {
+        const categoryId = fields["分类ID"];
+        const categoryName = fields["分类名称"];
         const library = libraryMap.get(libraryId);
-        const categoryId = row[2];
-        const categoryName = row[3];
-        const promptId = row[4];
-        const promptText = row[5];
-        const promptChinese = row[6];
-        const promptRemark = row[7];
-
-        // 添加分类
-        if (categoryId && categoryName && !promptId) {
+        if (library && categoryId && categoryName) {
           if (!library.categories.find((c) => c.id === categoryId)) {
             library.categories.push({
               id: categoryId,
@@ -265,43 +404,40 @@ async function syncFromFeishu() {
             });
           }
         }
-
-        // 添加提示词
-        if (promptId && promptText) {
+      } else if (dataType !== "提示词库" && dataType !== "分类") {
+        const promptId = fields["提示词ID"];
+        const promptText = fields["提示词"];
+        const categoryId = fields["分类ID"];
+        const library = libraryMap.get(libraryId);
+        if (library && promptId && promptText) {
           if (!library.prompts.find((p) => p.id === promptId)) {
             library.prompts.push({
               id: promptId,
               categoryId: categoryId,
               text: promptText,
-              chinese: promptChinese || "",
-              remark: promptRemark || "",
+              chinese: fields["中文解释"] || "",
+              remark: fields["备注"] || "",
             });
           }
         }
       }
+    });
 
-      await chrome.storage.local.set({
-        libraries,
-        currentLibraryId: libraries[0]?.id || "",
-      });
-      console.log("从飞书同步成功");
-    }
+    await chrome.storage.local.set({
+      libraries,
+      currentLibraryId: libraries[0]?.id || "",
+      lastSyncTime: Date.now(),
+      lastSyncStatus: "success",
+      lastSyncError: "",
+    });
   } catch (error) {
-    console.error("从飞书同步错误:", error);
+    console.error("从飞书同步失败:", error.message);
+    await chrome.storage.local.set({
+      lastSyncStatus: "failed",
+      lastSyncError: error.message,
+    });
+    throw error;
   }
 }
 
-// 监听来自popup或content script的消息
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "syncToFeishu") {
-    syncToFeishu().then(() => {
-      sendResponse({ success: true });
-    });
-    return true;
-  } else if (request.action === "syncFromFeishu") {
-    syncFromFeishu().then(() => {
-      sendResponse({ success: true });
-    });
-    return true;
-  }
-});
+console.log("=== Background Script 加载完成 ===");
