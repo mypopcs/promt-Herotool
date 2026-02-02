@@ -11,6 +11,27 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 
   console.log("定时同步任务已创建");
+
+  // 创建上下文菜单
+  chrome.contextMenus.create({
+    id: "add-to-prompt-library",
+    title: "添加到提示词库 (Alt+Shift+A)",
+    contexts: ["selection"],
+  });
+
+  console.log("上下文菜单已创建");
+});
+
+// 监听上下文菜单点击
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === "add-to-prompt-library" && info.selectionText) {
+    console.log("=== 上下文菜单点击 ===", info.selectionText);
+    // 向内容脚本发送消息
+    chrome.tabs.sendMessage(tab.id, {
+      action: "addSelectedTextToPrompt",
+      text: info.selectionText,
+    });
+  }
 });
 
 // 监听定时任务
@@ -36,6 +57,49 @@ chrome.commands.onCommand.addListener(async (command) => {
       console.log("侧边栏已打开");
     } catch (error) {
       console.error("打开侧边栏失败:", error);
+    }
+  } else if (command === "add_to_prompt_library") {
+    try {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      // 向内容脚本发送消息
+      chrome.tabs.sendMessage(
+        tab.id,
+        {
+          action: "addSelectedTextToPrompt",
+          text: "",
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.error("消息发送失败:", chrome.runtime.lastError);
+            // 尝试重新注入内容脚本
+            chrome.scripting.executeScript(
+              {
+                target: { tabId: tab.id },
+                files: ["content.js"],
+              },
+              () => {
+                if (chrome.runtime.lastError) {
+                  console.error("注入内容脚本失败:", chrome.runtime.lastError);
+                } else {
+                  console.log("内容脚本已重新注入");
+                  // 再次发送消息
+                  chrome.tabs.sendMessage(tab.id, {
+                    action: "addSelectedTextToPrompt",
+                    text: "",
+                  });
+                }
+              },
+            );
+          } else {
+            console.log("添加到提示词库快捷键触发成功");
+          }
+        },
+      );
+    } catch (error) {
+      console.error("发送消息失败:", error);
     }
   }
 });

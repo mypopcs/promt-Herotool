@@ -1,408 +1,342 @@
-// 创建右侧抽屉
-let drawer = null;
-let isDrawerOpen = false;
+// 全局变量
+let selectedText = "";
+let addButton = null;
+let addModal = null;
 
-// 监听来自popup的消息
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "toggleDrawer") {
-    toggleDrawer();
-  }
-});
+// 初始化
+function init() {
+  // 监听文本选择事件
+  document.addEventListener("mouseup", handleTextSelection);
+  document.addEventListener("selectionchange", handleSelectionChange);
+  // 监听点击事件，用于关闭浮动按钮
+  document.addEventListener("click", handleClick);
+  // 监听消息来自后台脚本
+  chrome.runtime.onMessage.addListener(handleMessage);
+}
 
-// 切换抽屉显示
-function toggleDrawer() {
-  if (isDrawerOpen) {
-    closeDrawer();
-  } else {
-    openDrawer();
+// 处理文本选择
+function handleTextSelection(event) {
+  setTimeout(() => {
+    selectedText = window.getSelection().toString().trim();
+
+    // 移除旧的浮动按钮
+    removeAddButton();
+
+    // 如果选中了文本，显示浮动按钮
+    if (selectedText && selectedText.length > 0) {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        showAddButton(rect.left + window.scrollX, rect.top + window.scrollY);
+      }
+    }
+  }, 10);
+}
+
+// 处理选择变化
+function handleSelectionChange() {
+  selectedText = window.getSelection().toString().trim();
+
+  if (!selectedText || selectedText.length === 0) {
+    removeAddButton();
   }
 }
 
-// 打开抽屉
-function openDrawer() {
-  if (drawer) {
-    drawer.remove();
-  }
+// 显示浮动添加按钮
+function showAddButton(x, y) {
+  addButton = document.createElement("button");
+  addButton.className = "prompt-add-button";
+  addButton.innerHTML = "添加到提示词库 (Alt+Shift+A)";
+  addButton.title = "添加到提示词库 (Alt+Shift+A)";
 
-  // 创建抽屉容器
-  drawer = document.createElement("div");
-  drawer.id = "ai-prompt-drawer";
-  drawer.innerHTML = `
-    <div class="drawer-overlay"></div>
-    <div class="drawer-content">
-      <div class="drawer-header">
-        <h2>AI绘画提示词管理器</h2>
-        <button class="close-btn" id="closeDrawer">×</button>
+  // 设置按钮位置
+  addButton.style.left = `${x}px`;
+  addButton.style.top = `${y - 40}px`;
+
+  // 添加点击事件
+  addButton.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    openAddPromptModal(selectedText);
+  });
+
+  // 阻止右键菜单
+  addButton.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  });
+
+  document.body.appendChild(addButton);
+}
+
+// 移除浮动按钮
+function removeAddButton() {
+  if (addButton && addButton.parentNode) {
+    addButton.parentNode.removeChild(addButton);
+    addButton = null;
+  }
+}
+
+// 处理点击事件
+function handleClick() {
+  removeAddButton();
+}
+
+// 打开添加提示词弹窗
+function openAddPromptModal(text) {
+  // 移除旧的弹窗
+  removeAddModal();
+
+  // 创建弹窗
+  addModal = document.createElement("div");
+  addModal.className = "prompt-add-modal";
+
+  // 弹窗内容
+  addModal.innerHTML = `
+    <div class="prompt-add-modal-content">
+      <div class="prompt-add-modal-header">
+        <h3 class="prompt-add-modal-title">添加到提示词库</h3>
+        <button class="prompt-add-modal-close">&times;</button>
       </div>
-      <div class="drawer-tabs">
-        <button class="tab-btn active" data-tab="use">使用提示词</button>
-        <button class="tab-btn" data-tab="manage">管理设置</button>
-      </div>
-      <div class="drawer-body">
-        <div class="tab-content active" id="useTab">
-          <div id="selectedPrompts" class="selected-prompts" style="display: none;">
-            <div class="selected-header">
-              <h3>已选择的提示词</h3>
-              <button id="clearSelection">清空</button>
-            </div>
-            <div id="selectedList" class="selected-list"></div>
-            <button id="copyPrompts" class="copy-btn">复制提示词</button>
-          </div>
-          <div id="promptsList"></div>
+      <form class="prompt-add-form">
+        <div class="form-group">
+          <label for="library-select">提示词库</label>
+          <select id="library-select" class="form-control"></select>
         </div>
-        <div class="tab-content" id="manageTab">
-          <div class="manage-section">
-            <h3>添加分类</h3>
-            <div class="input-group">
-              <input type="text" id="newCategoryName" placeholder="分类名称">
-              <button id="addCategory">添加</button>
-            </div>
-          </div>
-          <div class="manage-section">
-            <h3>分类管理</h3>
-            <div id="categoriesList"></div>
-          </div>
-          <div class="manage-section">
-            <h3>添加提示词</h3>
-            <select id="newPromptCategory">
-              <option value="">选择分类</option>
-            </select>
-            <div class="input-group">
-              <input type="text" id="newPromptText" placeholder="提示词内容">
-              <button id="addPrompt">添加</button>
-            </div>
-          </div>
-          <div class="manage-section">
-            <h3>提示词管理</h3>
-            <div id="promptsManageList"></div>
-          </div>
+        <div class="form-group">
+          <label for="category-select">分类</label>
+          <select id="category-select" class="form-control"></select>
         </div>
-      </div>
+        <div class="form-group">
+          <label for="prompt-text">提示词</label>
+          <input type="text" id="prompt-text" class="form-control" value="${escapeHtml(text)}" required>
+        </div>
+        <div class="form-group">
+          <label for="prompt-chinese">中文解释</label>
+          <input type="text" id="prompt-chinese" class="form-control">
+        </div>
+        <div class="form-group">
+          <label for="prompt-remark">备注</label>
+          <input type="text" id="prompt-remark" class="form-control">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary cancel-btn">取消</button>
+          <button type="submit" class="btn btn-primary save-btn">保存</button>
+        </div>
+      </form>
     </div>
   `;
 
-  document.body.appendChild(drawer);
-  isDrawerOpen = true;
+  document.body.appendChild(addModal);
 
-  // 加载数据并渲染
-  loadAndRender();
+  // 添加事件监听器
+  addModal
+    .querySelector(".prompt-add-modal-close")
+    .addEventListener("click", closeAddPromptModal);
+  addModal
+    .querySelector(".cancel-btn")
+    .addEventListener("click", closeAddPromptModal);
 
-  // 绑定事件
-  bindEvents();
+  // 表单提交
+  addModal.querySelector(".prompt-add-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    savePrompt();
+  });
+
+  // 点击模态框外部关闭
+  addModal.addEventListener("click", (e) => {
+    if (e.target === addModal) {
+      closeAddPromptModal();
+    }
+  });
+
+  // 加载提示词库和分类
+  loadLibrariesAndCategories();
 }
 
-// 关闭抽屉
-function closeDrawer() {
-  if (drawer) {
-    drawer.remove();
-    drawer = null;
-    isDrawerOpen = false;
+// 关闭添加提示词弹窗
+function closeAddPromptModal() {
+  removeAddModal();
+  removeAddButton();
+}
+
+// 移除弹窗
+function removeAddModal() {
+  if (addModal && addModal.parentNode) {
+    addModal.parentNode.removeChild(addModal);
+    addModal = null;
   }
 }
 
-// 加载数据并渲染
-async function loadAndRender() {
-  const data = await chrome.storage.local.get([
-    "categories",
-    "prompts",
-    "selectedPrompts",
-  ]);
+// 加载提示词库和分类
+function loadLibrariesAndCategories() {
+  chrome.storage.local.get(["libraries"], (result) => {
+    const libraries = result.libraries || [];
+    const librarySelect = document.getElementById("library-select");
 
-  const categories = data.categories || [];
-  const prompts = data.prompts || [];
-  const selectedPrompts = data.selectedPrompts || [];
+    // 填充提示词库选项
+    librarySelect.innerHTML = "";
+    if (libraries.length > 0) {
+      libraries.forEach((library) => {
+        const option = document.createElement("option");
+        option.value = library.id;
+        option.textContent = library.name;
+        librarySelect.appendChild(option);
+      });
 
-  renderUseTab(categories, prompts, selectedPrompts);
-  renderManageTab(categories, prompts);
-}
+      // 加载第一个提示词库的分类
+      loadCategories(libraries[0].id);
 
-// 渲染使用标签页
-function renderUseTab(categories, prompts, selectedPrompts) {
-  const promptsList = document.getElementById("promptsList");
-  const selectedPromptsDiv = document.getElementById("selectedPrompts");
-  const selectedList = document.getElementById("selectedList");
-
-  // 显示已选择的提示词
-  if (selectedPrompts.length > 0) {
-    selectedPromptsDiv.style.display = "block";
-    selectedList.innerHTML = selectedPrompts
-      .map((id) => {
-        const prompt = prompts.find((p) => p.id === id);
-        return prompt ? `<span class="selected-tag">${prompt.text}</span>` : "";
-      })
-      .join("");
-  } else {
-    selectedPromptsDiv.style.display = "none";
-  }
-
-  // 渲染分类和提示词
-  promptsList.innerHTML = categories
-    .map((category) => {
-      const categoryPrompts = prompts.filter(
-        (p) => p.categoryId === category.id,
-      );
-      if (categoryPrompts.length === 0) return "";
-
-      return `
-        <div class="category-section">
-          <h3>${category.name}</h3>
-          <div class="prompts-grid">
-            ${categoryPrompts
-              .map(
-                (prompt) => `
-              <button 
-                class="prompt-tag ${selectedPrompts.includes(prompt.id) ? "selected" : ""}" 
-                data-id="${prompt.id}"
-              >
-                ${prompt.text}
-              </button>
-            `,
-              )
-              .join("")}
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-
-  // 绑定提示词点击事件
-  document.querySelectorAll(".prompt-tag").forEach((tag) => {
-    tag.addEventListener("click", () => {
-      togglePromptSelection(tag.dataset.id);
-    });
-  });
-}
-
-// 渲染管理标签页
-function renderManageTab(categories, prompts) {
-  const categoriesList = document.getElementById("categoriesList");
-  const newPromptCategory = document.getElementById("newPromptCategory");
-  const promptsManageList = document.getElementById("promptsManageList");
-
-  // 渲染分类列表
-  categoriesList.innerHTML = categories
-    .map(
-      (cat) => `
-    <div class="manage-item">
-      <span>${cat.name}</span>
-      <div>
-        <button class="edit-btn" data-id="${cat.id}" data-type="category">编辑</button>
-        <button class="delete-btn" data-id="${cat.id}" data-type="category">删除</button>
-      </div>
-    </div>
-  `,
-    )
-    .join("");
-
-  // 更新分类选择器
-  newPromptCategory.innerHTML =
-    '<option value="">选择分类</option>' +
-    categories
-      .map((cat) => `<option value="${cat.id}">${cat.name}</option>`)
-      .join("");
-
-  // 渲染提示词管理列表
-  promptsManageList.innerHTML = categories
-    .map((category) => {
-      const categoryPrompts = prompts.filter(
-        (p) => p.categoryId === category.id,
-      );
-      if (categoryPrompts.length === 0) return "";
-
-      return `
-        <div class="category-section">
-          <h4>${category.name}</h4>
-          ${categoryPrompts
-            .map(
-              (prompt) => `
-            <div class="manage-item">
-              <span>${prompt.text}</span>
-              <div>
-                <button class="edit-btn" data-id="${prompt.id}" data-type="prompt">编辑</button>
-                <button class="delete-btn" data-id="${prompt.id}" data-type="prompt">删除</button>
-              </div>
-            </div>
-          `,
-            )
-            .join("")}
-        </div>
-      `;
-    })
-    .join("");
-}
-
-// 绑定事件
-function bindEvents() {
-  // 关闭按钮
-  document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
-  document
-    .querySelector(".drawer-overlay")
-    .addEventListener("click", closeDrawer);
-
-  // 标签切换
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const tab = btn.dataset.tab;
-      document
-        .querySelectorAll(".tab-btn")
-        .forEach((b) => b.classList.remove("active"));
-      document
-        .querySelectorAll(".tab-content")
-        .forEach((c) => c.classList.remove("active"));
-      btn.classList.add("active");
-      document.getElementById(tab + "Tab").classList.add("active");
-    });
-  });
-
-  // 清空选择
-  document
-    .getElementById("clearSelection")
-    .addEventListener("click", async () => {
-      await chrome.storage.local.set({ selectedPrompts: [] });
-      loadAndRender();
-    });
-
-  // 复制提示词
-  document.getElementById("copyPrompts").addEventListener("click", async () => {
-    const data = await chrome.storage.local.get(["prompts", "selectedPrompts"]);
-    const selectedTexts = data.selectedPrompts
-      .map((id) => data.prompts.find((p) => p.id === id)?.text)
-      .filter(Boolean)
-      .join(", ");
-
-    navigator.clipboard.writeText(selectedTexts);
-
-    const btn = document.getElementById("copyPrompts");
-    btn.textContent = "已复制!";
-    setTimeout(() => {
-      btn.textContent = "复制提示词";
-    }, 2000);
-  });
-
-  // 添加分类
-  document.getElementById("addCategory").addEventListener("click", async () => {
-    const name = document.getElementById("newCategoryName").value.trim();
-    if (!name) return;
-
-    const data = await chrome.storage.local.get(["categories"]);
-    const categories = data.categories || [];
-    categories.push({
-      id: Date.now().toString(),
-      name,
-    });
-
-    await chrome.storage.local.set({ categories });
-    document.getElementById("newCategoryName").value = "";
-    loadAndRender();
-  });
-
-  // 添加提示词
-  document.getElementById("addPrompt").addEventListener("click", async () => {
-    const categoryId = document.getElementById("newPromptCategory").value;
-    const text = document.getElementById("newPromptText").value.trim();
-    if (!categoryId || !text) return;
-
-    const data = await chrome.storage.local.get(["prompts"]);
-    const prompts = data.prompts || [];
-    prompts.push({
-      id: Date.now().toString(),
-      categoryId,
-      text,
-    });
-
-    await chrome.storage.local.set({ prompts });
-    document.getElementById("newPromptText").value = "";
-    loadAndRender();
-  });
-
-  // 编辑和删除按钮
-  document.querySelectorAll(".edit-btn").forEach((btn) => {
-    btn.addEventListener("click", () =>
-      editItem(btn.dataset.id, btn.dataset.type),
-    );
-  });
-
-  document.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () =>
-      deleteItem(btn.dataset.id, btn.dataset.type),
-    );
-  });
-}
-
-// 切换提示词选择
-async function togglePromptSelection(id) {
-  const data = await chrome.storage.local.get(["selectedPrompts"]);
-  let selectedPrompts = data.selectedPrompts || [];
-
-  if (selectedPrompts.includes(id)) {
-    selectedPrompts = selectedPrompts.filter((pid) => pid !== id);
-  } else {
-    selectedPrompts.push(id);
-  }
-
-  await chrome.storage.local.set({ selectedPrompts });
-  loadAndRender();
-}
-
-// 编辑项目
-async function editItem(id, type) {
-  const data = await chrome.storage.local.get([
-    type === "category" ? "categories" : "prompts",
-  ]);
-  const items = data[type === "category" ? "categories" : "prompts"] || [];
-  const item = items.find((i) => i.id === id);
-
-  if (!item) return;
-
-  const newValue = prompt(
-    `编辑${type === "category" ? "分类" : "提示词"}:`,
-    type === "category" ? item.name : item.text,
-  );
-
-  if (newValue && newValue.trim()) {
-    if (type === "category") {
-      item.name = newValue.trim();
+      // 监听提示词库选择变化
+      librarySelect.addEventListener("change", (e) => {
+        loadCategories(e.target.value);
+      });
     } else {
-      item.text = newValue.trim();
+      // 如果没有提示词库，显示默认选项
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "暂无提示词库";
+      librarySelect.appendChild(option);
+      librarySelect.disabled = true;
+    }
+  });
+}
+
+// 加载分类
+function loadCategories(libraryId) {
+  chrome.storage.local.get(["libraries"], (result) => {
+    const libraries = result.libraries || [];
+    const library = libraries.find((lib) => lib.id === libraryId);
+    const categorySelect = document.getElementById("category-select");
+
+    // 填充分类选项
+    categorySelect.innerHTML = "";
+    if (library && library.categories && library.categories.length > 0) {
+      library.categories.forEach((category) => {
+        const option = document.createElement("option");
+        option.value = category.id;
+        option.textContent = category.name;
+        categorySelect.appendChild(option);
+      });
+    } else {
+      // 如果没有分类，显示默认选项
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "暂无分类";
+      categorySelect.appendChild(option);
+      categorySelect.disabled = true;
+    }
+  });
+}
+
+// 保存提示词
+function savePrompt() {
+  const libraryId = document.getElementById("library-select").value;
+  const categoryId = document.getElementById("category-select").value;
+  const text = document.getElementById("prompt-text").value;
+  const chinese = document.getElementById("prompt-chinese").value;
+  const remark = document.getElementById("prompt-remark").value;
+
+  // 验证输入
+  if (!libraryId || !categoryId || !text) {
+    alert("请填写完整信息");
+    return;
+  }
+
+  // 从存储中获取数据
+  chrome.storage.local.get(["libraries"], (result) => {
+    const libraries = result.libraries || [];
+
+    // 找到对应的提示词库
+    const libraryIndex = libraries.findIndex((lib) => lib.id === libraryId);
+    if (libraryIndex === -1) {
+      alert("提示词库不存在");
+      return;
     }
 
-    await chrome.storage.local.set({
-      [type === "category" ? "categories" : "prompts"]: items,
-    });
-    loadAndRender();
-  }
-}
-
-// 删除项目
-async function deleteItem(id, type) {
-  if (!confirm(`确定删除此${type === "category" ? "分类" : "提示词"}吗?`))
-    return;
-
-  const data = await chrome.storage.local.get([
-    type === "category" ? "categories" : "prompts",
-  ]);
-  const items = data[type === "category" ? "categories" : "prompts"] || [];
-  const filtered = items.filter((i) => i.id !== id);
-
-  await chrome.storage.local.set({
-    [type === "category" ? "categories" : "prompts"]: filtered,
-  });
-
-  if (type === "category") {
-    // 同时删除该分类下的所有提示词
-    const promptsData = await chrome.storage.local.get(["prompts"]);
-    const prompts = (promptsData.prompts || []).filter(
-      (p) => p.categoryId !== id,
+    // 找到对应的分类
+    const category = libraries[libraryIndex].categories.find(
+      (cat) => cat.id === categoryId,
     );
-    await chrome.storage.local.set({ prompts });
-  }
+    if (!category) {
+      alert("分类不存在");
+      return;
+    }
 
-  loadAndRender();
+    // 创建新的提示词
+    const newPrompt = {
+      id: Date.now().toString(),
+      categoryId: categoryId,
+      text: text,
+      chinese: chinese,
+      remark: remark,
+    };
+
+    // 添加到提示词库
+    if (!libraries[libraryIndex].prompts) {
+      libraries[libraryIndex].prompts = [];
+    }
+    libraries[libraryIndex].prompts.push(newPrompt);
+
+    // 保存回存储
+    chrome.storage.local.set({ libraries }, () => {
+      // 关闭弹窗
+      closeAddPromptModal();
+
+      // 显示成功提示
+      showNotification("提示词添加成功");
+    });
+  });
 }
 
-// 监听键盘快捷键 (Ctrl+Shift+P)
-document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey && e.shiftKey && e.key === "P") {
-    toggleDrawer();
+// 显示通知
+function showNotification(message) {
+  // 创建通知元素
+  const notification = document.createElement("div");
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #10b981;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    z-index: 99999;
+    animation: slideIn 0.3s ease-out;
+  `;
+  notification.textContent = message;
+
+  document.body.appendChild(notification);
+
+  // 3秒后移除通知
+  setTimeout(() => {
+    notification.style.animation = "fadeIn 0.3s ease-out reverse";
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 300);
+  }, 3000);
+}
+
+// 处理来自后台脚本的消息
+function handleMessage(message, sender, sendResponse) {
+  if (message.action === "addSelectedTextToPrompt") {
+    const text = message.text || window.getSelection().toString().trim();
+    openAddPromptModal(text);
   }
-});
+}
+
+// HTML转义
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// 初始化
+init();

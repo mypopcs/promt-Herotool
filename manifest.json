@@ -3,8 +3,22 @@
   "name": "AI绘画提示词管理器",
   "version": "1.0.0",
   "description": "管理和使用AI绘画提示词,支持飞书表格同步",
-  "permissions": ["storage", "alarms", "sidePanel"],
-  "host_permissions": ["https://open.feishu.cn/*"],
+  "permissions": [
+    "storage",
+    "alarms",
+    "sidePanel",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": ["https://open.feishu.cn/*", "<all_urls>"],
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -22,9 +36,15 @@
   "commands": {
     "toggle_sidepanel": {
       "suggested_key": {
-        "default": "Ctrl+Shift+A"
+        "default": "Alt+Shift+S"
       },
       "description": "打开/关闭侧边栏"
+    },
+    "add_to_prompt_library": {
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
+      "description": "添加到提示词库"
     }
   },
   "options_page": "options.html",
