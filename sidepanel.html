@@ -66,6 +66,22 @@
       <div class="content">
         <!-- 使用提示词标签页 -->
         <div class="tab-content active" id="useTab">
+          <!-- 提示词库选择器 -->
+          <div
+            class="library-selector-container"
+            style="
+              margin: 16px;
+              padding: 12px;
+              background: #f9fafb;
+              border-radius: 8px;
+            "
+          >
+            <label for="librarySelectorUse">当前提示词库:</label>
+            <select id="librarySelectorUse" class="form-select">
+              <!-- 提示词库选项将通过JavaScript动态生成 -->
+            </select>
+          </div>
+
           <!-- 已选择的提示词 -->
           <div class="selected-section" id="selectedSection">
             <div class="selected-header">

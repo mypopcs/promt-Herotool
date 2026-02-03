@@ -511,6 +511,7 @@ function renderManageTab() {
 function renderLibrarySelector() {
   const selectCategories = document.getElementById("librarySelectorCategories");
   const selectPrompts = document.getElementById("librarySelectorPrompts");
+  const selectUse = document.getElementById("librarySelectorUse");
 
   const html = libraries
     .map(
@@ -525,6 +526,10 @@ function renderLibrarySelector() {
 
   if (selectPrompts) {
     selectPrompts.innerHTML = html;
+  }
+
+  if (selectUse) {
+    selectUse.innerHTML = html;
   }
 }
 
@@ -1275,6 +1280,14 @@ function bindEvents() {
   );
   if (librarySelectorPrompts) {
     librarySelectorPrompts.addEventListener("change", (e) => {
+      switchLibrary(e.target.value);
+    });
+  }
+
+  // 提示词库选择器事件 - 使用提示词页面
+  const librarySelectorUse = document.getElementById("librarySelectorUse");
+  if (librarySelectorUse) {
+    librarySelectorUse.addEventListener("change", (e) => {
       switchLibrary(e.target.value);
     });
   }

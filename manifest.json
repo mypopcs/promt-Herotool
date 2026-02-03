@@ -34,12 +34,6 @@
     "service_worker": "background.js"
   },
   "commands": {
-    "toggle_sidepanel": {
-      "suggested_key": {
-        "default": "Alt+Shift+S"
-      },
-      "description": "打开/关闭侧边栏"
-    },
     "add_to_prompt_library": {
       "suggested_key": {
         "default": "Alt+Shift+A"
