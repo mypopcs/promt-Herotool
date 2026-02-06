@@ -106,6 +106,50 @@
         </div>
 
         <div class="section">
+          <h2 class="section-title">GitHub图床配置</h2>
+
+          <div class="info-box">
+            <h3>📝 如何配置GitHub图床?</h3>
+            <ol>
+              <li>
+                在GitHub上创建一个公开仓库用于存储图片
+              </li>
+              <li>
+                在GitHub设置中生成Personal Access Token
+                <br /><strong>注意:</strong> Token需要repo权限
+              </li>
+              <li>
+                填写下面的配置信息并保存
+              </li>
+            </ol>
+          </div>
+
+          <div class="form-group">
+            <label for="githubOwner">GitHub用户名 *</label>
+            <input type="text" id="githubOwner" placeholder="your-username" />
+            <div class="help-text">GitHub用户名或组织名</div>
+          </div>
+
+          <div class="form-group">
+            <label for="githubRepo">仓库名称 *</label>
+            <input type="text" id="githubRepo" placeholder="your-image-repo" />
+            <div class="help-text">用于存储图片的仓库名称</div>
+          </div>
+
+          <div class="form-group">
+            <label for="githubToken">Personal Access Token *</label>
+            <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxx" />
+            <div class="help-text">GitHub Personal Access Token，需要repo权限</div>
+          </div>
+
+          <div class="form-group">
+            <label for="githubPath">存储路径 (可选)</label>
+            <input type="text" id="githubPath" placeholder="images/prompts" />
+            <div class="help-text">图片在仓库中的存储路径，默认为根目录</div>
+          </div>
+        </div>
+
+        <div class="section">
           <h2 class="section-title">同步设置</h2>
 
           <div class="info-box">

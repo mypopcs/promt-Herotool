@@ -18,6 +18,10 @@ async function loadSettings() {
       "feishuAppSecret",
       "feishuTableId",
       "feishuWikiNodeId",
+      "githubOwner",
+      "githubRepo",
+      "githubToken",
+      "githubPath",
       "lastSyncTime",
       "lastSyncStatus",
       "lastSyncError",
@@ -49,6 +53,24 @@ async function loadSettings() {
       document.getElementById("feishuWikiNodeId").value =
         config.feishuWikiNodeId;
       console.log("✓ Wiki 节点 ID已填充:", config.feishuWikiNodeId);
+    }
+
+    // 加载GitHub配置
+    if (config.githubOwner) {
+      document.getElementById("githubOwner").value = config.githubOwner;
+      console.log("✓ GitHub用户名已填充");
+    }
+    if (config.githubRepo) {
+      document.getElementById("githubRepo").value = config.githubRepo;
+      console.log("✓ GitHub仓库名称已填充");
+    }
+    if (config.githubToken) {
+      document.getElementById("githubToken").value = config.githubToken;
+      console.log("✓ GitHub Token已填充");
+    }
+    if (config.githubPath) {
+      document.getElementById("githubPath").value = config.githubPath;
+      console.log("✓ GitHub存储路径已填充");
     }
 
     // 显示同步信息
@@ -99,11 +121,20 @@ async function saveSettings() {
   const tableId = document.getElementById("feishuSheetId").value.trim();
   const wikiNodeId = document.getElementById("feishuWikiNodeId").value.trim();
 
+  const githubOwner = document.getElementById("githubOwner").value.trim();
+  const githubRepo = document.getElementById("githubRepo").value.trim();
+  const githubToken = document.getElementById("githubToken").value.trim();
+  const githubPath = document.getElementById("githubPath").value.trim();
+
   console.log("准备保存的配置:", {
     appId: appId ? "已填写" : "未填写",
     appSecret: appSecret ? "已填写" : "未填写",
     tableId: tableId,
     wikiNodeId: wikiNodeId || "未填写",
+    githubOwner: githubOwner ? "已填写" : "未填写",
+    githubRepo: githubRepo ? "已填写" : "未填写",
+    githubToken: githubToken ? "已填写" : "未填写",
+    githubPath: githubPath || "未填写",
   });
 
   if (!appId || !appSecret || !tableId) {
@@ -127,6 +158,22 @@ async function saveSettings() {
 
     if (wikiNodeId) {
       dataToSave.feishuWikiNodeId = wikiNodeId;
+    }
+
+    if (githubOwner) {
+      dataToSave.githubOwner = githubOwner;
+    }
+
+    if (githubRepo) {
+      dataToSave.githubRepo = githubRepo;
+    }
+
+    if (githubToken) {
+      dataToSave.githubToken = githubToken;
+    }
+
+    if (githubPath) {
+      dataToSave.githubPath = githubPath;
     }
 
     console.log("调用storage.local.set保存数据...");

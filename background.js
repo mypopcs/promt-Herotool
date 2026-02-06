@@ -237,11 +237,8 @@ async function syncToFeishu() {
       throw new Error("没有提示词库数据");
     }
 
-    try {
-      await clearBitableRecords(token, appToken, config.feishuTableId);
-    } catch (error) {
-      // 表格可能为空，继续执行
-    }
+    // 清空表格所有记录（必须成功，否则会导致数据重复）
+    await clearBitableRecords(token, appToken, config.feishuTableId);
 
     const records = [];
     data.libraries.forEach((library) => {
@@ -290,6 +287,7 @@ async function syncToFeishu() {
               分类名称: category?.name || "",
               提示词库ID: library.id || "",
               提示词库名称: library.name || "",
+              缩略图: prompt.imageUrl || "",
             },
           });
         });
@@ -358,7 +356,7 @@ async function clearBitableRecords(token, appToken, tableId) {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ record_ids: batch }),
+            body: JSON.stringify({ records: batch }),
           },
         );
 
@@ -405,12 +403,29 @@ async function syncFromFeishu() {
   try {
     const token = await getFeishuAccessToken();
     const config = await chrome.storage.local.get([
-      "feishuAppToken",
+      "feishuAppId",
       "feishuTableId",
+      "feishuWikiNodeId",
     ]);
 
-    if (!config.feishuAppToken || !config.feishuTableId) {
+    if (!config.feishuAppId || !config.feishuTableId) {
       throw new Error("飞书多维表格配置未设置");
+    }
+
+    if (!config.feishuTableId.startsWith("tbl")) {
+      throw new Error("表格ID格式错误，应该以 tbl 开头");
+    }
+
+    let appToken = config.feishuAppId;
+    if (config.feishuWikiNodeId) {
+      try {
+        appToken = await getBitableAppTokenFromWiki(
+          token,
+          config.feishuWikiNodeId,
+        );
+      } catch (error) {
+        // 使用配置的 appId
+      }
     }
 
     let allRecords = [];
@@ -418,7 +433,7 @@ async function syncFromFeishu() {
     let pageToken = undefined;
 
     while (hasMore) {
-      const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.feishuAppToken}/tables/${config.feishuTableId}/records?page_size=500${pageToken ? `&page_token=${pageToken}` : ""}`;
+      const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${config.feishuTableId}/records?page_size=500${pageToken ? `&page_token=${pageToken}` : ""}`;
       const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -481,6 +496,7 @@ async function syncFromFeishu() {
               text: promptText,
               chinese: fields["中文解释"] || "",
               remark: fields["备注"] || "",
+              imageUrl: fields["缩略图"] || "",
             });
           }
         }

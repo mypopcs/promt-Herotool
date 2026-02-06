@@ -13,6 +13,18 @@ let searchKeyword = "";
 let temporaryTags = []; // 临时标签数组
 let currentContextTagId = null; // 当前右键点击的标签ID
 
+// 图片上传相关
+let currentUploadedImage = null; // 当前上传的图片
+let currentEditUploadedImage = null; // 当前编辑时上传的图片
+let currentEditingPromptId = null; // 当前编辑的提示词ID
+
+// GitHub 配置
+let githubConfig = {
+  repo: "",
+  owner: "",
+  token: "",
+};
+
 // 初始化
 document.addEventListener("DOMContentLoaded", () => {
   initializeApp();
@@ -22,8 +34,26 @@ document.addEventListener("DOMContentLoaded", () => {
 // 初始化应用
 async function initializeApp() {
   await loadData();
+  await loadGitHubConfig();
   renderAll();
   updateSyncStatus();
+}
+
+// 加载GitHub配置
+async function loadGitHubConfig() {
+  try {
+    const result = await chrome.storage.local.get("githubConfig");
+    if (result.githubConfig) {
+      githubConfig = result.githubConfig;
+      console.log("=== GitHub配置加载成功 ===", {
+        owner: githubConfig.owner,
+        repo: githubConfig.repo,
+        token: githubConfig.token ? "***" : "",
+      });
+    }
+  } catch (error) {
+    console.error("=== GitHub配置加载失败 ===", error);
+  }
 }
 
 // 加载数据
@@ -251,11 +281,27 @@ function renderUseTab() {
             ${categoryPrompts
               .map(
                 (prompt) => `
-                <div class="prompt-tag ${selectedPrompts.includes(prompt.id) ? "selected" : ""}" 
+                <div class="prompt-tag ${selectedPrompts.includes(prompt.id) ? "selected" : ""} ${prompt.imageUrl ? "has-image" : ""}
                      data-id="${prompt.id}"
                      ${prompt.remark ? `data-remark="${escapeHtml(prompt.remark)}"` : ""}>
-                  ${escapeHtml(prompt.text)}
-                  ${prompt.chinese ? `<div class="prompt-tag-chinese">${escapeHtml(prompt.chinese)}</div>` : ""}
+                  ${
+                    prompt.imageUrl
+                      ? `
+                    <div class="prompt-image-container">
+                      <img 
+                        src="${prompt.imageUrl}" 
+                        alt="${escapeHtml(prompt.text)}" 
+                        class="prompt-thumbnail" 
+                        title="${escapeHtml(prompt.text)}"
+                      />
+                    </div>
+                  `
+                      : ""
+                  }
+                  <div class="prompt-tag-content">
+                    ${escapeHtml(prompt.text)}
+                    ${prompt.chinese ? `<div class="prompt-tag-chinese">${escapeHtml(prompt.chinese)}</div>` : ""}
+                  </div>
                 </div>
               `,
               )
@@ -272,6 +318,54 @@ function renderUseTab() {
   document.querySelectorAll(".prompt-tag").forEach((tag) => {
     tag.addEventListener("click", () => {
       togglePromptSelection(tag.dataset.id);
+    });
+  });
+
+  // 绑定图片hover和点击事件
+  document.querySelectorAll(".prompt-tag .prompt-thumbnail").forEach((img) => {
+    // hover事件 - 显示浮动层
+    img.addEventListener("mouseenter", (e) => {
+      const imageUrl = img.src;
+      const tooltip = document.getElementById("imageHoverTooltip");
+      const tooltipImg = document.getElementById("imageHoverTooltipImg");
+
+      tooltipImg.src = imageUrl;
+      tooltip.classList.add("show");
+
+      // 计算位置
+      const rect = img.getBoundingClientRect();
+      const tooltipWidth = 400;
+      const tooltipHeight = 400;
+
+      let left = rect.right + 10;
+      let top = rect.top;
+
+      // 如果右侧空间不足，显示在左侧
+      if (left + tooltipWidth > window.innerWidth) {
+        left = rect.left - tooltipWidth - 10;
+      }
+
+      // 如果底部空间不足，向上调整
+      if (top + tooltipHeight > window.innerHeight) {
+        top = window.innerHeight - tooltipHeight - 10;
+      }
+
+      tooltip.style.left = left + "px";
+      tooltip.style.top = top + "px";
+    });
+
+    // hover离开事件 - 隐藏浮动层
+    img.addEventListener("mouseleave", () => {
+      const tooltip = document.getElementById("imageHoverTooltip");
+      tooltip.classList.remove("show");
+    });
+
+    // 点击事件 - 显示弹窗
+    img.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const imageUrl = img.src;
+      showImagePreviewModal(imageUrl);
     });
   });
 }
@@ -672,7 +766,7 @@ function renderPromptsManageList() {
 
   if (pagePrompts.length === 0) {
     promptsManageList.innerHTML =
-      '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--gray-500);">暂无提示词</td></tr>';
+      '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--gray-500);">暂无提示词</td></tr>';
     selectAllCheckbox.checked = false;
     selectAllCheckbox.disabled = true;
     deleteSelectedBtn.style.display = "none";
@@ -694,6 +788,22 @@ function renderPromptsManageList() {
       const category = categories.find((c) => c.id === prompt.categoryId);
       const categoryName = category ? category.name : "未知分类";
       const isSelected = selectedPromptIds.has(prompt.id);
+
+      // 图片展示部分
+      const imageHtml = prompt.imageUrl
+        ? `
+        <div class="prompt-image-container">
+          <img 
+            src="${prompt.imageUrl}" 
+            alt="提示词图片" 
+            class="prompt-thumbnail" 
+            title="点击查看大图"
+            data-url="${prompt.imageUrl}"
+          />
+        </div>
+      `
+        : '<div class="prompt-image-container empty">无图片</div>';
+
       return `
           <tr>
             <td style="text-align: center;">
@@ -703,6 +813,9 @@ function renderPromptsManageList() {
             <td>${escapeHtml(prompt.chinese || "")}</td>
             <td>${escapeHtml(prompt.remark || "")}</td>
             <td>${escapeHtml(categoryName)}</td>
+            <td class="image-cell">
+              ${imageHtml}
+            </td>
             <td>
               <div class="table-actions">
                 <button class="edit-btn" data-id="${prompt.id}" data-type="prompt">编辑</button>
@@ -735,6 +848,53 @@ function renderPromptsManageList() {
         selectedPromptIds.delete(id);
       }
       renderPromptsManageList();
+    });
+  });
+
+  // 绑定图片hover和点击事件
+  promptsManageList.querySelectorAll(".prompt-thumbnail").forEach((img) => {
+    // hover事件 - 显示浮动层
+    img.addEventListener("mouseenter", (e) => {
+      const imageUrl = img.dataset.url;
+      const tooltip = document.getElementById("imageHoverTooltip");
+      const tooltipImg = document.getElementById("imageHoverTooltipImg");
+
+      tooltipImg.src = imageUrl;
+      tooltip.classList.add("show");
+
+      // 计算位置
+      const rect = img.getBoundingClientRect();
+      const tooltipWidth = 400;
+      const tooltipHeight = 400;
+
+      let left = rect.right + 10;
+      let top = rect.top;
+
+      // 如果右侧空间不足，显示在左侧
+      if (left + tooltipWidth > window.innerWidth) {
+        left = rect.left - tooltipWidth - 10;
+      }
+
+      // 如果底部空间不足，向上调整
+      if (top + tooltipHeight > window.innerHeight) {
+        top = window.innerHeight - tooltipHeight - 10;
+      }
+
+      tooltip.style.left = left + "px";
+      tooltip.style.top = top + "px";
+    });
+
+    // hover离开事件 - 隐藏浮动层
+    img.addEventListener("mouseleave", () => {
+      const tooltip = document.getElementById("imageHoverTooltip");
+      tooltip.classList.remove("show");
+    });
+
+    // 点击事件 - 显示弹窗
+    img.addEventListener("click", (e) => {
+      e.preventDefault();
+      const imageUrl = img.dataset.url;
+      showImagePreviewModal(imageUrl);
     });
   });
 }
@@ -1026,29 +1186,43 @@ async function addPrompt() {
   const remark = remarkInput.value.trim();
 
   if (!categoryId) {
-    alert("请选择分类");
+    showToast("请选择分类", "error");
     return;
   }
 
   if (!text) {
-    alert("请输入提示词内容");
+    showToast("请输入提示词内容", "error");
     return;
   }
 
+  const newPromptId = Date.now().toString();
+  let imageUrl = null;
+
+  if (currentUploadedImage) {
+    imageUrl = await uploadImageToGitHub(currentUploadedImage, newPromptId);
+  }
+
   prompts.push({
-    id: Date.now().toString(),
+    id: newPromptId,
     categoryId,
     text,
     chinese,
     remark,
+    imageUrl,
   });
 
   await saveData();
   input.value = "";
   chineseInput.value = "";
   remarkInput.value = "";
+
+  const previewElement = document.getElementById("newPromptImagePreview");
+  const removeButton = document.getElementById("newPromptImageRemove");
+  removeUploadedImage(previewElement, removeButton, "add");
+
   filterPrompts();
   renderAll();
+  showToast("提示词添加成功", "success");
 }
 
 // 编辑提示词
@@ -1072,6 +1246,46 @@ async function editPrompt(id) {
     )
     .join("");
 
+  // 处理图片预览
+  const previewElement = document.getElementById("editPromptImagePreview");
+  const imageInput = document.getElementById("editPromptImage");
+  const removeButton = document.getElementById("editPromptImageRemove");
+
+  // 清除之前的状态
+  removeUploadedImage(previewElement, removeButton, "edit");
+  currentEditUploadedImage = null;
+
+  // 如果有现有图片，显示预览
+  if (targetPrompt.imageUrl) {
+    previewElement.innerHTML = `
+      <img src="${targetPrompt.imageUrl}" alt="${escapeHtml(targetPrompt.text)}" class="preview-image" />
+      <button type="button" class="remove-image-btn" id="editPromptImageRemove" data-url="${targetPrompt.imageUrl}">×</button>
+    `;
+    imageInput.style.display = "none";
+    removeButton.style.display = "inline-flex";
+
+    // 绑定移除图片按钮事件
+    const removeBtn = previewElement.querySelector(".remove-image-btn");
+    if (removeBtn) {
+      removeBtn.addEventListener("click", async () => {
+        const imageUrl = removeBtn.dataset.url;
+        if (imageUrl && confirm("确定要删除这张图片吗？")) {
+          // 从GitHub删除图片
+          await deleteImageFromGitHub(imageUrl);
+          // 清除图片预览
+          removeUploadedImage(previewElement, removeButton, "edit");
+          currentEditUploadedImage = null;
+        }
+      });
+    }
+  } else {
+    // 显示上传提示
+    previewElement.innerHTML =
+      '<span class="image-placeholder">拖拽图片到此处或点击上传</span>';
+    imageInput.style.display = "none";
+    removeButton.style.display = "none";
+  }
+
   // 显示弹窗
   document.getElementById("editPromptModal").classList.add("show");
 }
@@ -1085,26 +1299,65 @@ async function saveEditPrompt() {
   const categoryId = document.getElementById("editPromptCategory").value;
 
   if (!text) {
-    alert("请输入提示词内容");
+    showToast("请输入提示词内容", "error");
     return;
   }
 
   if (!categoryId) {
-    alert("请选择分类");
+    showToast("请选择分类", "error");
     return;
   }
 
   const targetPrompt = prompts.find((p) => p.id === id);
   if (targetPrompt) {
+    const oldImageUrl = targetPrompt.imageUrl;
+
     targetPrompt.text = text;
     targetPrompt.chinese = chinese;
     targetPrompt.remark = remark;
     targetPrompt.categoryId = categoryId;
+
+    // 处理图片上传
+    console.log("=== 开始处理图片上传 ===");
+    console.log("currentEditUploadedImage:", currentEditUploadedImage);
+    console.log("oldImageUrl:", oldImageUrl);
+
+    if (currentEditUploadedImage) {
+      console.log("=== 调用uploadImageToGitHub ===");
+      const imageUrl = await uploadImageToGitHub(currentEditUploadedImage, id);
+      console.log("=== uploadImageToGitHub返回 ===");
+      console.log("imageUrl:", imageUrl);
+
+      if (imageUrl) {
+        // 删除GitHub上的旧图片
+        if (oldImageUrl && oldImageUrl !== imageUrl) {
+          console.log("=== 删除GitHub上的旧图片 ===");
+          await deleteImageFromGitHub(oldImageUrl);
+        }
+
+        targetPrompt.imageUrl = imageUrl;
+        console.log("=== 图片URL更新成功 ===");
+        console.log("新的imageUrl:", targetPrompt.imageUrl);
+      } else {
+        console.log("=== 图片上传失败，保持原有图片URL ===");
+        console.log("原有imageUrl:", targetPrompt.imageUrl);
+        // 上传失败时，不要清除原有的图片URL
+      }
+    } else if (oldImageUrl) {
+      // 用户移除了图片，清除imageUrl
+      console.log("=== 用户移除了图片，清除imageUrl ===");
+      targetPrompt.imageUrl = null;
+    } else {
+      console.log("=== 没有新图片需要上传，也没有旧图片需要删除 ===");
+    }
+
     await saveData();
+    console.log("=== 数据保存成功 ===");
+
     filterPrompts();
     renderAll();
     closeEditPromptModal();
-    showToast("提示词编辑成功");
+    showToast("提示词编辑成功", "success");
   }
 }
 
@@ -1117,12 +1370,24 @@ function closeEditPromptModal() {
   document.getElementById("editPromptChinese").value = "";
   document.getElementById("editPromptRemark").value = "";
   document.getElementById("editPromptCategory").innerHTML = "";
+
+  // 清除图片预览和当前编辑图片
+  const previewElement = document.getElementById("editPromptImagePreview");
+  const removeButton = document.getElementById("editPromptImageRemove");
+  removeUploadedImage(previewElement, removeButton, "edit");
+  currentEditUploadedImage = null;
 }
 
 // 删除提示词
 async function deletePrompt(id) {
   if (!confirm("确定删除此提示词吗?")) {
     return;
+  }
+
+  const promptToDelete = prompts.find((p) => p.id === id);
+  if (promptToDelete && promptToDelete.imageUrl) {
+    // 从GitHub删除图片
+    await deleteImageFromGitHub(promptToDelete.imageUrl);
   }
 
   prompts = prompts.filter((p) => p.id !== id);
@@ -1132,6 +1397,7 @@ async function deletePrompt(id) {
   await saveData();
   filterPrompts();
   renderAll();
+  showToast("提示词删除成功", "success");
 }
 
 // 同步到飞书
@@ -1202,6 +1468,249 @@ function formatRelativeTime(date) {
   if (diff < 604800) return `${Math.floor(diff / 86400)}天前`;
 
   return date.toLocaleDateString("zh-CN");
+}
+
+// 从GitHub删除图片
+async function deleteImageFromGitHub(imageUrl) {
+  if (!imageUrl || !githubConfig.token) {
+    return false;
+  }
+
+  try {
+    // 从URL中提取文件路径
+    const urlParts = imageUrl.split("/");
+    const fileName = urlParts[urlParts.length - 1];
+    const filePath = `prompts/${fileName}`;
+
+    // 获取文件的SHA（需要先获取文件信息）
+    const getResponse = await fetch(
+      `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/${filePath}`,
+      {
+        headers: {
+          Authorization: `token ${githubConfig.token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      },
+    );
+
+    if (!getResponse.ok) {
+      console.error("获取文件信息失败:", getResponse.statusText);
+      return false;
+    }
+
+    const fileInfo = await getResponse.json();
+    const sha = fileInfo.sha;
+
+    // 发送删除请求
+    const deleteResponse = await fetch(
+      `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/${filePath}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `token ${githubConfig.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: `Delete image: ${fileName}`,
+          sha: sha,
+        }),
+      },
+    );
+
+    if (!deleteResponse.ok) {
+      const errorData = await deleteResponse.json();
+      console.error("删除图片失败:", errorData);
+      showToast("删除图片失败，请检查GitHub配置", "error");
+      return false;
+    }
+
+    console.log("图片删除成功:", fileName);
+    return true;
+  } catch (error) {
+    console.error("删除图片时发生错误:", error);
+    showToast("删除图片时发生错误", "error");
+    return false;
+  }
+}
+
+// 上传图片到GitHub
+async function uploadImageToGitHub(imageFile, promptId) {
+  console.log("=== 开始上传图片 ===");
+  console.log("图片文件:", imageFile);
+  console.log("提示词ID:", promptId);
+  console.log("GitHub配置:", {
+    owner: githubConfig.owner,
+    repo: githubConfig.repo,
+    token: githubConfig.token ? "***" : "",
+    hasConfig: !!githubConfig.token,
+  });
+
+  if (!imageFile || !githubConfig.token) {
+    console.error("=== 上传失败：配置不完整 ===");
+    showToast("GitHub配置不完整，无法上传图片", "error");
+    return null;
+  }
+
+  try {
+    // 读取图片文件为Base64
+    console.log("=== 读取图片文件 ===");
+    const base64Image = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        console.log(
+          "图片读取完成，大小:",
+          (reader.result.length / 1024).toFixed(2),
+          "KB",
+        );
+        resolve(reader.result.split(",")[1]);
+      };
+      reader.onerror = (error) => {
+        console.error("图片读取失败:", error);
+        reject(error);
+      };
+      reader.readAsDataURL(imageFile);
+    });
+
+    // 生成文件名
+    const timestamp = Date.now();
+    const extension = imageFile.name.split(".").pop();
+    const fileName = `prompt_${promptId}_${timestamp}.${extension}`;
+    const filePath = `prompts/${fileName}`;
+    console.log("=== 准备上传 ===");
+    console.log("文件名:", fileName);
+    console.log("文件路径:", filePath);
+
+    // 发送上传请求
+    console.log("=== 发送GitHub API请求 ===");
+    const apiUrl = `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/${filePath}`;
+    console.log("API URL:", apiUrl);
+
+    const response = await fetch(apiUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `token ${githubConfig.token}`,
+        Accept: "application/vnd.github.v3+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: `Add image for prompt: ${promptId}`,
+        content: base64Image,
+        encoding: "base64",
+      }),
+    });
+
+    console.log("=== API响应 ===");
+    console.log("状态码:", response.status);
+    console.log("状态文本:", response.statusText);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("上传图片失败:", errorData);
+      showToast(
+        `上传图片失败: ${errorData.message || response.statusText}`,
+        "error",
+      );
+      return null;
+    }
+
+    const data = await response.json();
+    console.log("=== 上传成功 ===");
+    console.log("响应数据:", data);
+
+    const imageUrl = data.content.download_url;
+    console.log("图片URL:", imageUrl);
+    showToast("图片上传成功", "success");
+    return imageUrl;
+  } catch (error) {
+    console.error("=== 上传图片时发生错误 ===", error);
+    showToast(`上传图片时发生错误: ${error.message}`, "error");
+    return null;
+  }
+}
+
+// 处理图片上传
+function handleImageUpload(file, previewElement, removeButton, type = "add") {
+  if (!file) return;
+
+  // 验证文件类型
+  if (!file.type.startsWith("image/")) {
+    showToast("请上传图片文件", "error");
+    return;
+  }
+
+  // 验证文件大小（最大2MB）
+  if (file.size > 2 * 1024 * 1024) {
+    showToast("图片大小不能超过2MB", "error");
+    return;
+  }
+
+  // 显示图片预览
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    previewElement.innerHTML = `
+      <img src="${e.target.result}" alt="预览图片" class="preview-image" />
+      <button type="button" class="remove-image-btn">×</button>
+    `;
+    removeButton.style.display = "inline-flex";
+
+    // 保存当前上传的图片
+    if (type === "add") {
+      currentUploadedImage = file;
+    } else if (type === "edit") {
+      currentEditUploadedImage = file;
+    }
+
+    // 绑定移除按钮事件
+    const removeBtn = previewElement.querySelector(".remove-image-btn");
+    if (removeBtn) {
+      removeBtn.addEventListener("click", () => {
+        removeUploadedImage(previewElement, removeButton, type);
+        if (type === "add") {
+          currentUploadedImage = null;
+        } else if (type === "edit") {
+          currentEditUploadedImage = null;
+        }
+      });
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// 移除上传的图片
+function removeUploadedImage(previewElement, removeButton) {
+  if (previewElement) {
+    previewElement.innerHTML =
+      '<span class="image-placeholder">拖拽图片到此处或点击上传</span>';
+  }
+  if (removeButton) {
+    removeButton.style.display = "none";
+  }
+}
+
+// 显示提示信息
+function showToast(message, type = "success", duration = 3000) {
+  const toast = document.getElementById("toast");
+  const toastContent = document.getElementById("toastContent");
+
+  if (!toast || !toastContent) return;
+
+  // 清除之前的类型
+  toast.className = "toast";
+  // 添加新类型
+  toast.classList.add(type);
+  // 设置内容
+  toastContent.textContent = message;
+  // 显示提示
+  toast.classList.add("show");
+
+  // 定时隐藏
+  setTimeout(() => {
+    toast.classList.add("hide");
+    setTimeout(() => {
+      toast.classList.remove("show", "hide");
+    }, 300);
+  }, duration);
 }
 
 // 绑定事件
@@ -1358,31 +1867,6 @@ function bindEvents() {
   // 同步按钮
   document.getElementById("syncBtn").addEventListener("click", syncToFeishu);
 
-  // 显示提示信息
-  function showToast(message, type = "success", duration = 3000) {
-    const toast = document.getElementById("toast");
-    const toastContent = document.getElementById("toastContent");
-
-    if (!toast || !toastContent) return;
-
-    // 清除之前的类型
-    toast.className = "toast";
-    // 添加新类型
-    toast.classList.add(type);
-    // 设置内容
-    toastContent.textContent = message;
-    // 显示提示
-    toast.classList.add("show");
-
-    // 定时隐藏
-    setTimeout(() => {
-      toast.classList.add("hide");
-      setTimeout(() => {
-        toast.classList.remove("show", "hide");
-      }, 300);
-    }, duration);
-  }
-
   // 监听存储变化
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === "local") {
@@ -1491,6 +1975,9 @@ function bindEvents() {
       hideContextMenu();
     }
   });
+
+  // 设置图片上传处理器
+  setupImageUploadHandlers();
 }
 
 // HTML转义
@@ -1499,3 +1986,191 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
+
+// 图片上传相关函数
+function setupImageUploadHandlers() {
+  // 新建提示词图片上传
+  const newPromptImageBtn = document.getElementById("newPromptImageBtn");
+  const newPromptImageInput = document.getElementById("newPromptImage");
+  const newPromptImagePreview = document.getElementById(
+    "newPromptImagePreview",
+  );
+  const newPromptImageRemove = document.getElementById("newPromptImageRemove");
+
+  if (newPromptImageBtn && newPromptImageInput && newPromptImagePreview) {
+    newPromptImageBtn.addEventListener("click", () => {
+      newPromptImageInput.click();
+    });
+
+    newPromptImageInput.addEventListener("change", (e) => {
+      handleImageUpload(
+        e.target.files[0],
+        newPromptImagePreview,
+        newPromptImageRemove,
+        "add",
+      );
+    });
+
+    setupDragAndDrop(
+      newPromptImagePreview,
+      newPromptImageInput,
+      newPromptImageRemove,
+      "add",
+    );
+  }
+
+  // 编辑提示词图片上传
+  const editPromptImageBtn = document.getElementById("editPromptImageBtn");
+  const editPromptImageInput = document.getElementById("editPromptImage");
+  const editPromptImagePreview = document.getElementById(
+    "editPromptImagePreview",
+  );
+  const editPromptImageRemove = document.getElementById(
+    "editPromptImageRemove",
+  );
+
+  if (editPromptImageBtn && editPromptImageInput && editPromptImagePreview) {
+    editPromptImageBtn.addEventListener("click", () => {
+      editPromptImageInput.click();
+    });
+
+    editPromptImageInput.addEventListener("change", (e) => {
+      handleImageUpload(
+        e.target.files[0],
+        editPromptImagePreview,
+        editPromptImageRemove,
+        "edit",
+      );
+    });
+
+    setupDragAndDrop(
+      editPromptImagePreview,
+      editPromptImageInput,
+      editPromptImageRemove,
+      "edit",
+    );
+  }
+
+  // 图片预览弹窗关闭
+  const imagePreviewModal = document.getElementById("imagePreviewModal");
+  if (imagePreviewModal) {
+    imagePreviewModal.addEventListener("click", (e) => {
+      if (e.target === imagePreviewModal) {
+        imagePreviewModal.classList.remove("show");
+      }
+    });
+  }
+}
+
+function setupDragAndDrop(
+  previewElement,
+  inputElement,
+  removeButton,
+  type = "add",
+) {
+  previewElement.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    previewElement.classList.add("dragover");
+  });
+
+  previewElement.addEventListener("dragleave", () => {
+    previewElement.classList.remove("dragover");
+  });
+
+  previewElement.addEventListener("drop", (e) => {
+    e.preventDefault();
+    previewElement.classList.remove("dragover");
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleImageUpload(files[0], previewElement, removeButton, type);
+    }
+  });
+}
+
+async function handleImageUpload(
+  file,
+  previewElement,
+  removeButton,
+  type = "add",
+) {
+  if (!file) return;
+
+  // 验证文件类型
+  if (!file.type.startsWith("image/")) {
+    showToast("请选择图片文件", "error");
+    return;
+  }
+
+  // 验证文件大小 (最大5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    showToast("图片大小不能超过5MB", "error");
+    return;
+  }
+
+  try {
+    // 显示预览
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      previewElement.innerHTML = `<img src="${e.target.result}" alt="预览" />`;
+      previewElement.classList.add("has-image");
+      removeButton.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+
+    // 保存当前上传的图片
+    if (type === "add") {
+      currentUploadedImage = file;
+    } else if (type === "edit") {
+      currentEditUploadedImage = file;
+    }
+  } catch (error) {
+    console.error("图片预览失败:", error);
+    showToast("图片预览失败", "error");
+  }
+}
+
+function removeUploadedImage(previewElement, removeButton, type = "add") {
+  previewElement.innerHTML =
+    '<span class="image-placeholder">拖拽图片到此处或点击上传</span>';
+  previewElement.classList.remove("has-image");
+  removeButton.style.display = "none";
+
+  // 清除当前上传的图片
+  if (type === "add") {
+    currentUploadedImage = null;
+  } else if (type === "edit") {
+    currentEditUploadedImage = null;
+  }
+}
+
+function showImagePreviewModal(imageUrl) {
+  const modal = document.getElementById("imagePreviewModal");
+  const img = document.getElementById("imagePreviewModalImg");
+
+  if (modal && img) {
+    img.src = imageUrl;
+    modal.classList.add("show");
+  }
+}
+
+function hideImagePreviewModal() {
+  const modal = document.getElementById("imagePreviewModal");
+  if (modal) {
+    modal.classList.remove("show");
+  }
+}
+
+// 点击弹窗背景关闭弹窗
+document.getElementById("imagePreviewModal").addEventListener("click", (e) => {
+  if (e.target.id === "imagePreviewModal") {
+    hideImagePreviewModal();
+  }
+});
+
+// 点击关闭按钮关闭弹窗
+document
+  .getElementById("closeImagePreviewModal")
+  .addEventListener("click", () => {
+    hideImagePreviewModal();
+  });

@@ -385,6 +385,37 @@
                       添加提示词
                     </button>
                   </div>
+                  <div class="input-group" style="margin-top: 8px">
+                    <label for="newPromptImage">缩略图</label>
+                    <div class="image-upload-container">
+                      <div class="image-preview" id="newPromptImagePreview">
+                        <span class="image-placeholder"
+                          >拖拽图片到此处或点击上传</span
+                        >
+                      </div>
+                      <input
+                        type="file"
+                        id="newPromptImage"
+                        accept="image/*"
+                        style="display: none"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        id="newPromptImageBtn"
+                      >
+                        选择图片
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        id="newPromptImageRemove"
+                        style="display: none"
+                      >
+                        移除图片
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- 提示词管理表格 -->
@@ -438,6 +469,7 @@
                           <th>中文解释</th>
                           <th>备注</th>
                           <th>所属分类</th>
+                          <th style="width: 80px">缩略图</th>
                           <th>操作</th>
                         </tr>
                       </thead>
@@ -590,6 +622,35 @@
               <!-- 分类选项将通过JavaScript动态生成 -->
             </select>
           </div>
+          <div class="input-group">
+            <label for="editPromptImage">缩略图</label>
+            <div class="image-upload-container">
+              <div class="image-preview" id="editPromptImagePreview">
+                <span class="image-placeholder">拖拽图片到此处或点击上传</span>
+              </div>
+              <input
+                type="file"
+                id="editPromptImage"
+                accept="image/*"
+                style="display: none"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary"
+                id="editPromptImageBtn"
+              >
+                选择图片
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                id="editPromptImageRemove"
+                style="display: none"
+              >
+                移除图片
+              </button>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button id="cancelEditPromptBtn" class="btn btn-secondary">
@@ -634,6 +695,32 @@
     <div id="contextMenu" class="context-menu">
       <div class="context-menu-header">替换为同分类提示词</div>
       <div class="context-menu-items" id="contextMenuItems"></div>
+    </div>
+
+    <!-- 图片预览弹窗 -->
+    <div id="imagePreviewModal" class="image-preview-modal">
+      <img id="imagePreviewModalImg" src="" alt="预览图片" />
+      <button
+        id="closeImagePreviewModal"
+        class="modal-close"
+        style="
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          color: white;
+          background: rgba(0, 0, 0, 0.5);
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+        "
+      >
+        &times;
+      </button>
+    </div>
+
+    <!-- 图片hover浮动层 -->
+    <div id="imageHoverTooltip" class="image-hover-tooltip">
+      <img id="imageHoverTooltipImg" src="" alt="hover图片" />
     </div>
 
     <!-- 提示信息框 -->
