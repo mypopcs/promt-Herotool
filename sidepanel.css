@@ -1275,30 +1275,245 @@ body {
 }
 
 /* 响应式 */
-@media (max-width: 400px) {
+@media (max-width: 768px) {
   .header h1 {
     font-size: 16px;
   }
 
-  .tab-btn {
+  .manage-table {
     font-size: 13px;
-    padding: 12px 8px;
-  }
-
-  .tab-btn svg {
-    display: none;
   }
 
   .manage-table th,
   .manage-table td {
-    padding: 8px 10px;
-    font-size: 13px;
+    padding: 8px 6px;
   }
 
   .edit-btn,
   .delete-btn {
     padding: 4px 8px;
     font-size: 11px;
+  }
+
+  .filter-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-group {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .search-group {
+    width: 100%;
+  }
+
+  #promptCategoryFilter,
+  #promptSearch {
+    width: 100%;
+  }
+
+  .pagination-controls {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pagination-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .input-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .input-group .form-input,
+  .input-group .form-select,
+  .input-group .btn {
+    width: 100%;
+  }
+
+  .add-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .delete-selected-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .table-container {
+    overflow-x: auto;
+  }
+
+  .manage-table {
+    min-width: 600px;
+  }
+
+  .manage-table th:nth-child(2),
+  .manage-table td:nth-child(2),
+  .manage-table th:nth-child(3),
+  .manage-table td:nth-child(3),
+  .manage-table th:nth-child(4),
+  .manage-table td:nth-child(4) {
+    min-width: 100px;
+    max-width: 120px;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .manage-table th:nth-child(6),
+  .manage-table td:nth-child(6) {
+    width: 60px;
+    min-width: 60px;
+  }
+
+  .manage-table th:nth-child(7),
+  .manage-table td:nth-child(7) {
+    width: 120px;
+    min-width: 120px;
+  }
+
+  .table-actions {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .table-actions .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 12px 16px;
+  }
+
+  .header h1 {
+    font-size: 14px;
+  }
+
+  .footer {
+    padding: 10px 16px;
+  }
+
+  .sync-status {
+    font-size: 11px;
+  }
+
+  .footer-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .manage-card {
+    padding: 12px;
+  }
+
+  .card-title {
+    font-size: 14px;
+  }
+
+  .manage-table {
+    font-size: 12px;
+  }
+
+  .manage-table th,
+  .manage-table td {
+    padding: 6px 4px;
+  }
+
+  .manage-table th:nth-child(2),
+  .manage-table td:nth-child(2),
+  .manage-table th:nth-child(3),
+  .manage-table td:nth-child(3),
+  .manage-table th:nth-child(4),
+  .manage-table td:nth-child(4) {
+    min-width: 80px;
+    max-width: 100px;
+    font-size: 11px;
+  }
+
+  .prompt-thumbnail {
+    width: 40px;
+    height: 40px;
+  }
+
+  .pagination-info {
+    font-size: 11px;
+  }
+
+  .page-info {
+    font-size: 11px;
+  }
+
+  .pagination-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .pagination-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .badge {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+
+  .empty-state {
+    padding: 40px 16px;
+  }
+
+  .empty-state svg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .empty-state h3 {
+    font-size: 14px;
+  }
+
+  .empty-state p {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 400px) {
+  .manage-table {
+    min-width: 500px;
+  }
+
+  .manage-table th,
+  .manage-table td {
+    padding: 4px 2px;
+    font-size: 11px;
+  }
+
+  .manage-table th:nth-child(2),
+  .manage-table td:nth-child(2),
+  .manage-table th:nth-child(3),
+  .manage-table td:nth-child(3),
+  .manage-table th:nth-child(4),
+  .manage-table td:nth-child(4) {
+    min-width: 70px;
+    max-width: 90px;
+    font-size: 10px;
+  }
+
+  .edit-btn,
+  .delete-btn {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+
+  .prompt-thumbnail {
+    width: 35px;
+    height: 35px;
   }
 }
 

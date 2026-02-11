@@ -4,39 +4,25 @@ let currentLibraryId = ""; // 当前选中的提示词库ID
 let categories = []; // 当前提示词库的分类
 let prompts = []; // 当前提示词库的提示词
 let selectedPrompts = []; // 选中的提示词ID
-let filteredPrompts = [];
-let selectedPromptIds = new Set();
-let currentPage = 1;
-let pageSize = 20;
-let categoryFilter = "";
-let searchKeyword = "";
 let temporaryTags = []; // 临时标签数组
 let currentContextTagId = null; // 当前右键点击的标签ID
-
-// 图片上传相关
-let currentUploadedImage = null; // 当前上传的图片
-let currentEditUploadedImage = null; // 当前编辑时上传的图片
-let currentEditingPromptId = null; // 当前编辑的提示词ID
-
-// GitHub 配置
-let githubConfig = {
-  repo: "",
-  owner: "",
-  token: "",
-};
 
 // 初始化
 document.addEventListener("DOMContentLoaded", () => {
   initializeApp();
-  bindEvents();
 });
 
 // 初始化应用
 async function initializeApp() {
-  await loadData();
-  await loadGitHubConfig();
-  renderAll();
-  updateSyncStatus();
+  try {
+    await loadData();
+    await loadGitHubConfig();
+    bindEvents();
+    renderAll();
+    updateSyncStatus();
+  } catch (error) {
+    console.error("初始化失败:", error);
+  }
 }
 
 // 加载GitHub配置
@@ -44,11 +30,10 @@ async function loadGitHubConfig() {
   try {
     const result = await chrome.storage.local.get("githubConfig");
     if (result.githubConfig) {
-      githubConfig = result.githubConfig;
       console.log("=== GitHub配置加载成功 ===", {
-        owner: githubConfig.owner,
-        repo: githubConfig.repo,
-        token: githubConfig.token ? "***" : "",
+        owner: result.githubConfig.owner,
+        repo: result.githubConfig.repo,
+        token: result.githubConfig.token ? "***" : "",
       });
     }
   } catch (error) {
@@ -58,24 +43,31 @@ async function loadGitHubConfig() {
 
 // 加载数据
 async function loadData() {
-  const data = await chrome.storage.local.get([
-    "libraries",
-    "currentLibraryId",
-    "selectedPrompts",
-    "temporaryTags",
-  ]);
+  try {
+    const data = await chrome.storage.local.get([
+      "libraries",
+      "currentLibraryId",
+      "selectedPrompts",
+      "temporaryTags",
+    ]);
 
-  libraries = data.libraries || getDefaultLibraries();
-  currentLibraryId = data.currentLibraryId || libraries[0]?.id || "";
-  selectedPrompts = data.selectedPrompts || [];
-  temporaryTags = data.temporaryTags || [];
+    libraries = data.libraries || getDefaultLibraries();
+    currentLibraryId = data.currentLibraryId || libraries[0]?.id || "";
+    selectedPrompts = data.selectedPrompts || [];
+    temporaryTags = data.temporaryTags || [];
 
-  // 加载当前提示词库的数据
-  loadCurrentLibraryData();
+    // 加载当前提示词库的数据
+    loadCurrentLibraryData();
 
-  // 如果是第一次使用，保存默认数据
-  if (!data.libraries || data.libraries.length === 0) {
-    await saveData();
+    // 如果是第一次使用，保存默认数据
+    if (!data.libraries || data.libraries.length === 0) {
+      await saveData();
+    }
+  } catch (error) {
+    console.error("加载数据失败:", error);
+    libraries = getDefaultLibraries();
+    currentLibraryId = libraries[0]?.id || "";
+    loadCurrentLibraryData();
   }
 }
 
@@ -89,7 +81,6 @@ function loadCurrentLibraryData() {
     categories = [];
     prompts = [];
   }
-  filteredPrompts = [...prompts];
 }
 
 // 获取默认提示词库
@@ -225,25 +216,44 @@ function getDefaultLibraries() {
 
 // 保存数据
 async function saveData() {
-  // 更新当前提示词库的数据
-  const currentLibrary = libraries.find((lib) => lib.id === currentLibraryId);
-  if (currentLibrary) {
-    currentLibrary.categories = categories;
-    currentLibrary.prompts = prompts;
-  }
+  try {
+    // 更新当前提示词库的数据
+    const currentLibrary = libraries.find((lib) => lib.id === currentLibraryId);
+    if (currentLibrary) {
+      currentLibrary.categories = categories;
+      currentLibrary.prompts = prompts;
+    }
 
-  await chrome.storage.local.set({
-    libraries,
-    currentLibraryId,
-    selectedPrompts,
-    temporaryTags,
-  });
+    await chrome.storage.local.set({
+      libraries,
+      currentLibraryId,
+      selectedPrompts,
+      temporaryTags,
+    });
+  } catch (error) {
+    console.error("保存数据失败:", error);
+  }
 }
 
 // 渲染所有内容
 function renderAll() {
+  renderLibrarySelector();
   renderUseTab();
-  renderManageTab();
+}
+
+// 渲染提示词库选择器
+function renderLibrarySelector() {
+  const selectUse = document.getElementById("librarySelectorUse");
+  if (!selectUse) return;
+
+  const html = libraries
+    .map(
+      (lib) =>
+        `<option value="${lib.id}" ${lib.id === currentLibraryId ? "selected" : ""}>${escapeHtml(lib.name)}</option>`,
+    )
+    .join("");
+
+  selectUse.innerHTML = html;
 }
 
 // 渲染使用标签页
@@ -253,40 +263,43 @@ function renderUseTab() {
   const emptyState = document.getElementById("emptyState");
 
   // 始终显示已选择区域
-  selectedSection.style.display = "block";
-  renderSelectedTags();
+  if (selectedSection) {
+    selectedSection.style.display = "block";
+    renderSelectedTags();
+  }
 
   // 检查是否有提示词
   if (prompts.length === 0) {
-    promptsList.style.display = "none";
-    emptyState.style.display = "flex";
+    if (promptsList) promptsList.style.display = "none";
+    if (emptyState) emptyState.style.display = "flex";
     return;
   }
 
-  promptsList.style.display = "block";
-  emptyState.style.display = "none";
+  if (promptsList) promptsList.style.display = "block";
+  if (emptyState) emptyState.style.display = "none";
 
   // 渲染分类和提示词
-  const html = categories
-    .map((category) => {
-      const categoryPrompts = prompts.filter(
-        (p) => p.categoryId === category.id,
-      );
-      if (categoryPrompts.length === 0) return "";
+  if (promptsList) {
+    const html = categories
+      .map((category) => {
+        const categoryPrompts = prompts.filter(
+          (p) => p.categoryId === category.id,
+        );
+        if (categoryPrompts.length === 0) return "";
 
-      return `
-        <div class="category-card">
-          <h3>${escapeHtml(category.name)}</h3>
-          <div class="prompt-tags">
-            ${categoryPrompts
-              .map(
-                (prompt) => `
-                <div class="prompt-tag ${selectedPrompts.includes(prompt.id) ? "selected" : ""} ${prompt.imageUrl ? "has-image" : ""}
-                     data-id="${prompt.id}"
-                     ${prompt.remark ? `data-remark="${escapeHtml(prompt.remark)}"` : ""}>
-                  ${
-                    prompt.imageUrl
-                      ? `
+        return `
+          <div class="category-card">
+            <h3>${escapeHtml(category.name)}</h3>
+            <div class="prompt-tags">
+              ${categoryPrompts
+                .map(
+                  (prompt) => `
+                  <div class="prompt-tag ${selectedPrompts.includes(prompt.id) ? "selected" : ""} ${prompt.imageUrl ? "has-image" : ""}
+                       data-id="${prompt.id}"
+                       ${prompt.remark ? `data-remark="${escapeHtml(prompt.remark)}"` : ""}>
+                    ${
+                      prompt.imageUrl
+                        ? `
                     <div class="prompt-image-container">
                       <img 
                         src="${prompt.imageUrl}" 
@@ -296,83 +309,91 @@ function renderUseTab() {
                       />
                     </div>
                   `
-                      : ""
-                  }
-                  <div class="prompt-tag-content">
-                    ${escapeHtml(prompt.text)}
-                    ${prompt.chinese ? `<div class="prompt-tag-chinese">${escapeHtml(prompt.chinese)}</div>` : ""}
+                        : ""
+                    }
+                    <div class="prompt-tag-content">
+                      ${escapeHtml(prompt.text)}
+                      ${prompt.chinese ? `<div class="prompt-tag-chinese">${escapeHtml(prompt.chinese)}</div>` : ""}
+                    </div>
                   </div>
-                </div>
-              `,
-              )
-              .join("")}
+                `,
+                )
+                .join("")}
+            </div>
           </div>
-        </div>
-      `;
-    })
-    .join("");
+        `;
+      })
+      .join("");
 
-  promptsList.innerHTML = html;
+    promptsList.innerHTML = html;
 
-  // 绑定提示词点击事件
-  document.querySelectorAll(".prompt-tag").forEach((tag) => {
-    tag.addEventListener("click", () => {
-      togglePromptSelection(tag.dataset.id);
-    });
-  });
-
-  // 绑定图片hover和点击事件
-  document.querySelectorAll(".prompt-tag .prompt-thumbnail").forEach((img) => {
-    // hover事件 - 显示浮动层
-    img.addEventListener("mouseenter", (e) => {
-      const imageUrl = img.src;
-      const tooltip = document.getElementById("imageHoverTooltip");
-      const tooltipImg = document.getElementById("imageHoverTooltipImg");
-
-      tooltipImg.src = imageUrl;
-      tooltip.classList.add("show");
-
-      // 计算位置
-      const rect = img.getBoundingClientRect();
-      const tooltipWidth = 400;
-      const tooltipHeight = 400;
-
-      let left = rect.right + 10;
-      let top = rect.top;
-
-      // 如果右侧空间不足，显示在左侧
-      if (left + tooltipWidth > window.innerWidth) {
-        left = rect.left - tooltipWidth - 10;
-      }
-
-      // 如果底部空间不足，向上调整
-      if (top + tooltipHeight > window.innerHeight) {
-        top = window.innerHeight - tooltipHeight - 10;
-      }
-
-      tooltip.style.left = left + "px";
-      tooltip.style.top = top + "px";
+    // 绑定提示词点击事件
+    document.querySelectorAll(".prompt-tag").forEach((tag) => {
+      tag.addEventListener("click", () => {
+        togglePromptSelection(tag.dataset.id);
+      });
     });
 
-    // hover离开事件 - 隐藏浮动层
-    img.addEventListener("mouseleave", () => {
-      const tooltip = document.getElementById("imageHoverTooltip");
-      tooltip.classList.remove("show");
-    });
+    // 绑定图片hover和点击事件
+    document
+      .querySelectorAll(".prompt-tag .prompt-thumbnail")
+      .forEach((img) => {
+        // hover事件 - 显示浮动层
+        img.addEventListener("mouseenter", (e) => {
+          const imageUrl = img.src;
+          const tooltip = document.getElementById("imageHoverTooltip");
+          const tooltipImg = document.getElementById("imageHoverTooltipImg");
 
-    // 点击事件 - 显示弹窗
-    img.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const imageUrl = img.src;
-      showImagePreviewModal(imageUrl);
-    });
-  });
+          if (tooltip && tooltipImg) {
+            tooltipImg.src = imageUrl;
+            tooltip.classList.add("show");
+
+            // 计算位置
+            const rect = img.getBoundingClientRect();
+            const tooltipWidth = 400;
+            const tooltipHeight = 400;
+
+            let left = rect.right + 10;
+            let top = rect.top;
+
+            // 如果右侧空间不足，显示在左侧
+            if (left + tooltipWidth > window.innerWidth) {
+              left = rect.left - tooltipWidth - 10;
+            }
+
+            // 如果底部空间不足，向上调整
+            if (top + tooltipHeight > window.innerHeight) {
+              top = window.innerHeight - tooltipHeight - 10;
+            }
+
+            tooltip.style.left = left + "px";
+            tooltip.style.top = top + "px";
+          }
+        });
+
+        // hover离开事件 - 隐藏浮动层
+        img.addEventListener("mouseleave", () => {
+          const tooltip = document.getElementById("imageHoverTooltip");
+          if (tooltip) {
+            tooltip.classList.remove("show");
+          }
+        });
+
+        // 点击事件 - 显示弹窗
+        img.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const imageUrl = img.src;
+          showImagePreviewModal(imageUrl);
+        });
+      });
+  }
 }
 
 // 渲染已选择的标签
 function renderSelectedTags() {
   const selectedTags = document.getElementById("selectedTags");
+  if (!selectedTags) return;
 
   // 渲染选中的提示词
   let html = selectedPrompts
@@ -466,6 +487,8 @@ function showContextMenu(event, promptId) {
   const contextMenu = document.getElementById("contextMenu");
   const contextMenuItems = document.getElementById("contextMenuItems");
 
+  if (!contextMenu || !contextMenuItems) return;
+
   // 获取同分类下的其他提示词
   const categoryPrompts = prompts.filter(
     (p) => p.categoryId === prompt.categoryId && p.id !== promptId,
@@ -515,7 +538,9 @@ function showContextMenu(event, promptId) {
 // 隐藏右键菜单
 function hideContextMenu() {
   const contextMenu = document.getElementById("contextMenu");
-  contextMenu.classList.remove("show");
+  if (contextMenu) {
+    contextMenu.classList.remove("show");
+  }
   currentContextTagId = null;
 }
 
@@ -571,1225 +596,48 @@ async function copyPrompts() {
     await navigator.clipboard.writeText(finalText);
 
     const btn = document.getElementById("copyBtn");
-    const originalHTML = btn.innerHTML;
+    if (btn) {
+      const originalHTML = btn.innerHTML;
 
-    btn.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="20 6 9 17 4 12"></polyline>
-      </svg>
-      已复制!
-    `;
-    btn.classList.add("copied");
+      btn.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        已复制!
+      `;
+      btn.classList.add("copied");
 
-    setTimeout(() => {
-      btn.innerHTML = originalHTML;
-      btn.classList.remove("copied");
-    }, 2000);
+      setTimeout(() => {
+        btn.innerHTML = originalHTML;
+        btn.classList.remove("copied");
+      }, 2000);
+    }
   } catch (error) {
     console.error("复制失败:", error);
   }
 }
 
-// 渲染管理标签页
-function renderManageTab() {
-  renderLibrarySelector();
-  renderLibraryList();
-  renderCategoriesList();
-  renderCategorySelect();
-  renderCategoryFilter();
-  renderPromptsManageList();
-  updatePaginationControls();
-}
-
-// 渲染提示词库选择器
-function renderLibrarySelector() {
-  const selectCategories = document.getElementById("librarySelectorCategories");
-  const selectPrompts = document.getElementById("librarySelectorPrompts");
-  const selectUse = document.getElementById("librarySelectorUse");
-
-  const html = libraries
-    .map(
-      (lib) =>
-        `<option value="${lib.id}" ${lib.id === currentLibraryId ? "selected" : ""}>${escapeHtml(lib.name)}</option>`,
-    )
-    .join("");
-
-  if (selectCategories) {
-    selectCategories.innerHTML = html;
-  }
-
-  if (selectPrompts) {
-    selectPrompts.innerHTML = html;
-  }
-
-  if (selectUse) {
-    selectUse.innerHTML = html;
-  }
-}
-
-// 渲染提示词库列表
-function renderLibraryList() {
-  const libraryList = document.getElementById("libraryList");
-
-  if (!libraryList) return;
-
-  if (libraries.length === 0) {
-    libraryList.innerHTML =
-      '<tr><td colspan="3" style="text-align: center; padding: 40px; color: var(--gray-500);">暂无提示词库</td></tr>';
-    return;
-  }
-
-  const html = libraries
-    .map((library) => {
-      const promptCount = library.prompts ? library.prompts.length : 0;
-      const categoryCount = library.categories ? library.categories.length : 0;
-      return `
-          <tr>
-            <td>${escapeHtml(library.name)}</td>
-            <td><span class="table-count">${categoryCount} 分类 / ${promptCount} 提示词</span></td>
-            <td>
-              <div class="table-actions">
-                <button class="edit-btn" data-id="${library.id}" data-type="library">编辑</button>
-                <button class="delete-btn" data-id="${library.id}" data-type="library">删除</button>
-              </div>
-            </td>
-          </tr>
-        `;
-    })
-    .join("");
-
-  libraryList.innerHTML = html;
-
-  // 绑定编辑和删除事件
-  libraryList.querySelectorAll(".edit-btn").forEach((btn) => {
-    btn.addEventListener("click", () => editLibrary(btn.dataset.id));
-  });
-
-  libraryList.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () => deleteLibrary(btn.dataset.id));
-  });
-}
-
-// 渲染分类列表
-function renderCategoriesList() {
-  const categoriesList = document.getElementById("categoriesList");
-
-  if (categories.length === 0) {
-    categoriesList.innerHTML =
-      '<tr><td colspan="3" style="text-align: center; padding: 40px; color: var(--gray-500);">暂无分类</td></tr>';
-    return;
-  }
-
-  const html = categories
-    .map((category) => {
-      const promptCount = prompts.filter(
-        (p) => p.categoryId === category.id,
-      ).length;
-      return `
-          <tr>
-            <td>${escapeHtml(category.name)}</td>
-            <td><span class="table-count">${promptCount}</span></td>
-            <td>
-              <div class="table-actions">
-                <button class="edit-btn" data-id="${category.id}" data-type="category">编辑</button>
-                <button class="delete-btn" data-id="${category.id}" data-type="category">删除</button>
-              </div>
-            </td>
-          </tr>
-        `;
-    })
-    .join("");
-
-  categoriesList.innerHTML = html;
-
-  // 绑定编辑和删除事件
-  categoriesList.querySelectorAll(".edit-btn").forEach((btn) => {
-    btn.addEventListener("click", () => editCategory(btn.dataset.id));
-  });
-
-  categoriesList.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () => deleteCategory(btn.dataset.id));
-  });
-}
-
-// 渲染分类选择器
-function renderCategorySelect() {
-  const select = document.getElementById("promptCategorySelect");
-
-  const html = `
-    <option value="">选择分类...</option>
-    ${categories.map((cat) => `<option value="${cat.id}">${escapeHtml(cat.name)}</option>`).join("")}
-  `;
-
-  select.innerHTML = html;
-}
-
-// 渲染分类筛选器
-function renderCategoryFilter() {
-  const select = document.getElementById("promptCategoryFilter");
-
-  const html = `
-    <option value="">全部分类</option>
-    ${categories.map((cat) => `<option value="${cat.id}">${escapeHtml(cat.name)}</option>`).join("")}
-  `;
-
-  select.innerHTML = html;
-  select.value = categoryFilter;
-}
-
-// 筛选提示词
-function filterPrompts() {
-  filteredPrompts = prompts.filter((prompt) => {
-    const matchCategory =
-      !categoryFilter || prompt.categoryId === categoryFilter;
-    const matchSearch =
-      !searchKeyword ||
-      prompt.text.toLowerCase().includes(searchKeyword.toLowerCase());
-    return matchCategory && matchSearch;
-  });
-
-  currentPage = 1;
-  renderPromptsManageList();
-  updatePaginationControls();
-}
-
-// 渲染提示词管理列表
-function renderPromptsManageList() {
-  const promptsManageList = document.getElementById("promptsManageList");
-  const selectAllCheckbox = document.getElementById("selectAllPrompts");
-  const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
-
-  // 计算分页
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const pagePrompts = filteredPrompts.slice(startIndex, endIndex);
-
-  if (pagePrompts.length === 0) {
-    promptsManageList.innerHTML =
-      '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--gray-500);">暂无提示词</td></tr>';
-    selectAllCheckbox.checked = false;
-    selectAllCheckbox.disabled = true;
-    deleteSelectedBtn.style.display = "none";
-    return;
-  }
-
-  selectAllCheckbox.disabled = false;
-
-  // 检查当前页是否全部选中
-  const allSelected = pagePrompts.every((p) => selectedPromptIds.has(p.id));
-  selectAllCheckbox.checked = allSelected;
-
-  // 更新删除选中按钮显示状态
-  deleteSelectedBtn.style.display =
-    selectedPromptIds.size > 0 ? "flex" : "none";
-
-  const html = pagePrompts
-    .map((prompt) => {
-      const category = categories.find((c) => c.id === prompt.categoryId);
-      const categoryName = category ? category.name : "未知分类";
-      const isSelected = selectedPromptIds.has(prompt.id);
-
-      // 图片展示部分
-      const imageHtml = prompt.imageUrl
-        ? `
-        <div class="prompt-image-container">
-          <img 
-            src="${prompt.imageUrl}" 
-            alt="提示词图片" 
-            class="prompt-thumbnail" 
-            title="点击查看大图"
-            data-url="${prompt.imageUrl}"
-          />
-        </div>
-      `
-        : '<div class="prompt-image-container empty">无图片</div>';
-
-      return `
-          <tr>
-            <td style="text-align: center;">
-              <input type="checkbox" class="prompt-checkbox" data-id="${prompt.id}" ${isSelected ? "checked" : ""} />
-            </td>
-            <td>${escapeHtml(prompt.text)}</td>
-            <td>${escapeHtml(prompt.chinese || "")}</td>
-            <td>${escapeHtml(prompt.remark || "")}</td>
-            <td>${escapeHtml(categoryName)}</td>
-            <td class="image-cell">
-              ${imageHtml}
-            </td>
-            <td>
-              <div class="table-actions">
-                <button class="edit-btn" data-id="${prompt.id}" data-type="prompt">编辑</button>
-                <button class="delete-btn" data-id="${prompt.id}" data-type="prompt">删除</button>
-              </div>
-            </td>
-          </tr>
-        `;
-    })
-    .join("");
-
-  promptsManageList.innerHTML = html;
-
-  // 绑定编辑和删除事件
-  promptsManageList.querySelectorAll(".edit-btn").forEach((btn) => {
-    btn.addEventListener("click", () => editPrompt(btn.dataset.id));
-  });
-
-  promptsManageList.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () => deletePrompt(btn.dataset.id));
-  });
-
-  // 绑定复选框事件
-  promptsManageList.querySelectorAll(".prompt-checkbox").forEach((checkbox) => {
-    checkbox.addEventListener("change", (e) => {
-      const id = e.target.dataset.id;
-      if (e.target.checked) {
-        selectedPromptIds.add(id);
-      } else {
-        selectedPromptIds.delete(id);
-      }
-      renderPromptsManageList();
-    });
-  });
-
-  // 绑定图片hover和点击事件
-  promptsManageList.querySelectorAll(".prompt-thumbnail").forEach((img) => {
-    // hover事件 - 显示浮动层
-    img.addEventListener("mouseenter", (e) => {
-      const imageUrl = img.dataset.url;
-      const tooltip = document.getElementById("imageHoverTooltip");
-      const tooltipImg = document.getElementById("imageHoverTooltipImg");
-
-      tooltipImg.src = imageUrl;
-      tooltip.classList.add("show");
-
-      // 计算位置
-      const rect = img.getBoundingClientRect();
-      const tooltipWidth = 400;
-      const tooltipHeight = 400;
-
-      let left = rect.right + 10;
-      let top = rect.top;
-
-      // 如果右侧空间不足，显示在左侧
-      if (left + tooltipWidth > window.innerWidth) {
-        left = rect.left - tooltipWidth - 10;
-      }
-
-      // 如果底部空间不足，向上调整
-      if (top + tooltipHeight > window.innerHeight) {
-        top = window.innerHeight - tooltipHeight - 10;
-      }
-
-      tooltip.style.left = left + "px";
-      tooltip.style.top = top + "px";
-    });
-
-    // hover离开事件 - 隐藏浮动层
-    img.addEventListener("mouseleave", () => {
-      const tooltip = document.getElementById("imageHoverTooltip");
-      tooltip.classList.remove("show");
-    });
-
-    // 点击事件 - 显示弹窗
-    img.addEventListener("click", (e) => {
-      e.preventDefault();
-      const imageUrl = img.dataset.url;
-      showImagePreviewModal(imageUrl);
-    });
-  });
-}
-
-// 更新分页控件
-function updatePaginationControls() {
-  const total = filteredPrompts.length;
-  const totalPages = Math.ceil(total / pageSize);
-  const startIndex = (currentPage - 1) * pageSize + 1;
-  const endIndex = Math.min(currentPage * pageSize, total);
-
-  const paginationInfo = document.getElementById("paginationInfo");
-  const currentPageSpan = document.getElementById("currentPage");
-  const prevPageBtn = document.getElementById("prevPage");
-  const nextPageBtn = document.getElementById("nextPage");
-
-  if (total === 0) {
-    paginationInfo.textContent = "0-0 共 0";
-    currentPageSpan.textContent = "1";
-    prevPageBtn.disabled = true;
-    nextPageBtn.disabled = true;
-  } else {
-    paginationInfo.textContent = `${startIndex}-${endIndex} 共 ${total}`;
-    currentPageSpan.textContent = currentPage;
-    prevPageBtn.disabled = currentPage === 1;
-    nextPageBtn.disabled = currentPage >= totalPages;
-  }
-}
-
-// 切换页面
-function changePage(direction) {
-  const total = filteredPrompts.length;
-  const totalPages = Math.ceil(total / pageSize);
-
-  if (direction === "prev" && currentPage > 1) {
-    currentPage--;
-  } else if (direction === "next" && currentPage < totalPages) {
-    currentPage++;
-  }
-
-  renderPromptsManageList();
-  updatePaginationControls();
-}
-
-// 更改每页显示数量
-function changePageSize(newPageSize) {
-  pageSize = parseInt(newPageSize);
-  currentPage = 1;
-  renderPromptsManageList();
-  updatePaginationControls();
-}
-
-// 全选/取消全选当前页
-function toggleSelectAll() {
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const pagePrompts = filteredPrompts.slice(startIndex, endIndex);
-  const selectAllCheckbox = document.getElementById("selectAllPrompts");
-
-  if (selectAllCheckbox.checked) {
-    pagePrompts.forEach((p) => selectedPromptIds.add(p.id));
-  } else {
-    pagePrompts.forEach((p) => selectedPromptIds.delete(p.id));
-  }
-
-  renderPromptsManageList();
-}
-
-// 删除选中的提示词
-async function deleteSelectedPrompts() {
-  if (selectedPromptIds.size === 0) {
-    return;
-  }
-
-  if (!confirm(`确定删除选中的 ${selectedPromptIds.size} 个提示词吗?`)) {
-    return;
-  }
-
-  prompts = prompts.filter((p) => !selectedPromptIds.has(p.id));
-  selectedPrompts = selectedPrompts.filter((id) => !selectedPromptIds.has(id));
-  selectedPromptIds.clear();
-
-  await saveData();
-  filterPrompts();
-  renderAll();
-}
-
-// 添加提示词库
-async function addLibrary() {
-  const input = document.getElementById("newLibraryInput");
-  const name = input.value.trim();
-
-  if (!name) {
-    alert("请输入提示词库名称");
-    return;
-  }
-
-  const newLibrary = {
-    id: Date.now().toString(),
-    name,
-    categories: [],
-    prompts: [],
-  };
-
-  libraries.push(newLibrary);
-  currentLibraryId = newLibrary.id;
-  loadCurrentLibraryData();
-
-  await saveData();
-  input.value = "";
-  renderAll();
-}
-
-// 编辑提示词库
-async function editLibrary(id) {
-  const library = libraries.find((lib) => lib.id === id);
-  if (!library) return;
-
-  // 填充弹窗数据
-  document.getElementById("editLibraryId").value = library.id;
-  document.getElementById("editLibraryName").value = library.name;
-
-  // 显示弹窗
-  document.getElementById("editLibraryModal").classList.add("show");
-}
-
-// 保存提示词库编辑
-async function saveEditLibrary() {
-  const id = document.getElementById("editLibraryId").value;
-  const name = document.getElementById("editLibraryName").value.trim();
-
-  if (!name) {
-    alert("请输入提示词库名称");
-    return;
-  }
-
-  const library = libraries.find((lib) => lib.id === id);
-  if (library) {
-    library.name = name;
-    await saveData();
-    renderAll();
-    closeEditLibraryModal();
-    showToast("提示词库编辑成功");
-  }
-}
-
-// 关闭提示词库编辑弹窗
-function closeEditLibraryModal() {
-  document.getElementById("editLibraryModal").classList.remove("show");
-  // 清空表单
-  document.getElementById("editLibraryId").value = "";
-  document.getElementById("editLibraryName").value = "";
-}
-
-// 删除提示词库
-async function deleteLibrary(id) {
-  if (libraries.length === 1) {
-    alert("至少需要保留一个提示词库");
-    return;
-  }
-
-  if (!confirm("确定删除此提示词库吗?删除后无法恢复。")) {
-    return;
-  }
-
-  libraries = libraries.filter((lib) => lib.id !== id);
-
-  // 如果删除的是当前提示词库，切换到第一个提示词库
-  if (id === currentLibraryId) {
-    currentLibraryId = libraries[0]?.id || "";
-    loadCurrentLibraryData();
-    // 清空选中的提示词，因为它们可能属于被删除的库
-    selectedPrompts = [];
-  }
-
-  await saveData();
-  renderAll();
-}
-
-// 切换提示词库
-async function switchLibrary(libraryId) {
-  if (libraryId === currentLibraryId) return;
-
-  currentLibraryId = libraryId;
-  loadCurrentLibraryData();
-
-  // 清空选中的提示词，因为它们属于其他库
-  selectedPrompts = [];
-  selectedPromptIds.clear();
-
-  await saveData();
-  renderAll();
-}
-
-// 添加分类
-async function addCategory() {
-  const input = document.getElementById("newCategoryInput");
-  const name = input.value.trim();
-
-  if (!name) {
-    alert("请输入分类名称");
-    return;
-  }
-
-  categories.push({
-    id: Date.now().toString(),
-    name,
-  });
-
-  await saveData();
-  input.value = "";
-  renderManageTab();
-}
-
-// 编辑分类
-async function editCategory(id) {
-  const category = categories.find((c) => c.id === id);
-  if (!category) return;
-
-  // 填充弹窗数据
-  document.getElementById("editCategoryId").value = category.id;
-  document.getElementById("editCategoryName").value = category.name;
-
-  // 显示弹窗
-  document.getElementById("editCategoryModal").classList.add("show");
-}
-
-// 保存分类编辑
-async function saveEditCategory() {
-  const id = document.getElementById("editCategoryId").value;
-  const name = document.getElementById("editCategoryName").value.trim();
-
-  if (!name) {
-    alert("请输入分类名称");
-    return;
-  }
-
-  const category = categories.find((c) => c.id === id);
-  if (category) {
-    category.name = name;
-    await saveData();
-    renderAll();
-    closeEditCategoryModal();
-    showToast("分类编辑成功");
-  }
-}
-
-// 关闭分类编辑弹窗
-function closeEditCategoryModal() {
-  document.getElementById("editCategoryModal").classList.remove("show");
-  // 清空表单
-  document.getElementById("editCategoryId").value = "";
-  document.getElementById("editCategoryName").value = "";
-}
-
-// 删除分类
-async function deleteCategory(id) {
-  // 检查分类下是否有提示词
-  const promptCount = prompts.filter((p) => p.categoryId === id).length;
-  if (promptCount > 0) {
-    alert(
-      `该分类下还有 ${promptCount} 个提示词，无法删除。请先删除分类下的所有提示词。`,
-    );
-    return;
-  }
-
-  if (!confirm("确定删除此分类吗?")) {
-    return;
-  }
-
-  categories = categories.filter((c) => c.id !== id);
-  selectedPrompts = selectedPrompts.filter((sid) => {
-    const prompt = prompts.find((p) => p.id === sid);
-    return prompt && prompt.categoryId !== id;
-  });
-
-  await saveData();
-  renderAll();
-}
-
-// 添加提示词
-async function addPrompt() {
-  const categoryId = document.getElementById("promptCategorySelect").value;
-  const input = document.getElementById("newPromptInput");
-  const chineseInput = document.getElementById("newPromptChinese");
-  const remarkInput = document.getElementById("newPromptRemark");
-  const text = input.value.trim();
-  const chinese = chineseInput.value.trim();
-  const remark = remarkInput.value.trim();
-
-  if (!categoryId) {
-    showToast("请选择分类", "error");
-    return;
-  }
-
-  if (!text) {
-    showToast("请输入提示词内容", "error");
-    return;
-  }
-
-  const newPromptId = Date.now().toString();
-  let imageUrl = null;
-
-  if (currentUploadedImage) {
-    imageUrl = await uploadImageToGitHub(currentUploadedImage, newPromptId);
-  }
-
-  prompts.push({
-    id: newPromptId,
-    categoryId,
-    text,
-    chinese,
-    remark,
-    imageUrl,
-  });
-
-  await saveData();
-  input.value = "";
-  chineseInput.value = "";
-  remarkInput.value = "";
-
-  const previewElement = document.getElementById("newPromptImagePreview");
-  const removeButton = document.getElementById("newPromptImageRemove");
-  removeUploadedImage(previewElement, removeButton, "add");
-
-  filterPrompts();
-  renderAll();
-  showToast("提示词添加成功", "success");
-}
-
-// 编辑提示词
-async function editPrompt(id) {
-  const targetPrompt = prompts.find((p) => p.id === id);
-  if (!targetPrompt) return;
-
-  // 填充弹窗数据
-  document.getElementById("editPromptId").value = targetPrompt.id;
-  document.getElementById("editPromptText").value = targetPrompt.text;
-  document.getElementById("editPromptChinese").value =
-    targetPrompt.chinese || "";
-  document.getElementById("editPromptRemark").value = targetPrompt.remark || "";
-
-  // 填充分类选择器
-  const categorySelect = document.getElementById("editPromptCategory");
-  categorySelect.innerHTML = categories
-    .map(
-      (cat) =>
-        `<option value="${cat.id}" ${cat.id === targetPrompt.categoryId ? "selected" : ""}>${escapeHtml(cat.name)}</option>`,
-    )
-    .join("");
-
-  // 处理图片预览
-  const previewElement = document.getElementById("editPromptImagePreview");
-  const imageInput = document.getElementById("editPromptImage");
-  const removeButton = document.getElementById("editPromptImageRemove");
-
-  // 清除之前的状态
-  removeUploadedImage(previewElement, removeButton, "edit");
-  currentEditUploadedImage = null;
-
-  // 如果有现有图片，显示预览
-  if (targetPrompt.imageUrl) {
-    previewElement.innerHTML = `
-      <img src="${targetPrompt.imageUrl}" alt="${escapeHtml(targetPrompt.text)}" class="preview-image" />
-      <button type="button" class="remove-image-btn" id="editPromptImageRemove" data-url="${targetPrompt.imageUrl}">×</button>
-    `;
-    imageInput.style.display = "none";
-    removeButton.style.display = "inline-flex";
-
-    // 绑定移除图片按钮事件
-    const removeBtn = previewElement.querySelector(".remove-image-btn");
-    if (removeBtn) {
-      removeBtn.addEventListener("click", async () => {
-        const imageUrl = removeBtn.dataset.url;
-        if (imageUrl && confirm("确定要删除这张图片吗？")) {
-          // 从GitHub删除图片
-          await deleteImageFromGitHub(imageUrl);
-          // 清除图片预览
-          removeUploadedImage(previewElement, removeButton, "edit");
-          currentEditUploadedImage = null;
-        }
-      });
-    }
-  } else {
-    // 显示上传提示
-    previewElement.innerHTML =
-      '<span class="image-placeholder">拖拽图片到此处或点击上传</span>';
-    imageInput.style.display = "none";
-    removeButton.style.display = "none";
-  }
-
-  // 显示弹窗
-  document.getElementById("editPromptModal").classList.add("show");
-}
-
-// 保存提示词编辑
-async function saveEditPrompt() {
-  const id = document.getElementById("editPromptId").value;
-  const text = document.getElementById("editPromptText").value.trim();
-  const chinese = document.getElementById("editPromptChinese").value.trim();
-  const remark = document.getElementById("editPromptRemark").value.trim();
-  const categoryId = document.getElementById("editPromptCategory").value;
-
-  if (!text) {
-    showToast("请输入提示词内容", "error");
-    return;
-  }
-
-  if (!categoryId) {
-    showToast("请选择分类", "error");
-    return;
-  }
-
-  const targetPrompt = prompts.find((p) => p.id === id);
-  if (targetPrompt) {
-    const oldImageUrl = targetPrompt.imageUrl;
-
-    targetPrompt.text = text;
-    targetPrompt.chinese = chinese;
-    targetPrompt.remark = remark;
-    targetPrompt.categoryId = categoryId;
-
-    // 处理图片上传
-    console.log("=== 开始处理图片上传 ===");
-    console.log("currentEditUploadedImage:", currentEditUploadedImage);
-    console.log("oldImageUrl:", oldImageUrl);
-
-    if (currentEditUploadedImage) {
-      console.log("=== 调用uploadImageToGitHub ===");
-      const imageUrl = await uploadImageToGitHub(currentEditUploadedImage, id);
-      console.log("=== uploadImageToGitHub返回 ===");
-      console.log("imageUrl:", imageUrl);
-
-      if (imageUrl) {
-        // 删除GitHub上的旧图片
-        if (oldImageUrl && oldImageUrl !== imageUrl) {
-          console.log("=== 删除GitHub上的旧图片 ===");
-          await deleteImageFromGitHub(oldImageUrl);
-        }
-
-        targetPrompt.imageUrl = imageUrl;
-        console.log("=== 图片URL更新成功 ===");
-        console.log("新的imageUrl:", targetPrompt.imageUrl);
-      } else {
-        console.log("=== 图片上传失败，保持原有图片URL ===");
-        console.log("原有imageUrl:", targetPrompt.imageUrl);
-        // 上传失败时，不要清除原有的图片URL
-      }
-    } else if (oldImageUrl) {
-      // 用户移除了图片，清除imageUrl
-      console.log("=== 用户移除了图片，清除imageUrl ===");
-      targetPrompt.imageUrl = null;
-    } else {
-      console.log("=== 没有新图片需要上传，也没有旧图片需要删除 ===");
-    }
-
-    await saveData();
-    console.log("=== 数据保存成功 ===");
-
-    filterPrompts();
-    renderAll();
-    closeEditPromptModal();
-    showToast("提示词编辑成功", "success");
-  }
-}
-
-// 关闭提示词编辑弹窗
-function closeEditPromptModal() {
-  document.getElementById("editPromptModal").classList.remove("show");
-  // 清空表单
-  document.getElementById("editPromptId").value = "";
-  document.getElementById("editPromptText").value = "";
-  document.getElementById("editPromptChinese").value = "";
-  document.getElementById("editPromptRemark").value = "";
-  document.getElementById("editPromptCategory").innerHTML = "";
-
-  // 清除图片预览和当前编辑图片
-  const previewElement = document.getElementById("editPromptImagePreview");
-  const removeButton = document.getElementById("editPromptImageRemove");
-  removeUploadedImage(previewElement, removeButton, "edit");
-  currentEditUploadedImage = null;
-}
-
-// 删除提示词
-async function deletePrompt(id) {
-  if (!confirm("确定删除此提示词吗?")) {
-    return;
-  }
-
-  const promptToDelete = prompts.find((p) => p.id === id);
-  if (promptToDelete && promptToDelete.imageUrl) {
-    // 从GitHub删除图片
-    await deleteImageFromGitHub(promptToDelete.imageUrl);
-  }
-
-  prompts = prompts.filter((p) => p.id !== id);
-  selectedPrompts = selectedPrompts.filter((sid) => sid !== id);
-  selectedPromptIds.delete(id);
-
-  await saveData();
-  filterPrompts();
-  renderAll();
-  showToast("提示词删除成功", "success");
-}
-
-// 同步到飞书
-async function syncToFeishu() {
-  const syncBtn = document.getElementById("syncBtn");
-  const syncStatus = document.getElementById("syncStatus");
-
-  syncBtn.classList.add("syncing");
-  syncStatus.classList.add("syncing");
-  syncStatus.querySelector(".status-text").textContent = "同步中...";
-
-  try {
-    const response = await chrome.runtime.sendMessage({
-      action: "syncToFeishu",
-    });
-
-    if (response.success) {
-      syncStatus.classList.remove("syncing");
-      syncStatus.classList.add("synced");
-      syncStatus.querySelector(".status-text").textContent = "同步成功";
-
-      setTimeout(() => {
-        updateSyncStatus();
-      }, 3000);
-    } else {
-      throw new Error("同步失败");
-    }
-  } catch (error) {
-    console.error("同步失败:", error);
-    syncStatus.classList.remove("syncing");
-    syncStatus.querySelector(".status-text").textContent = "同步失败";
-    alert("同步失败: " + error.message);
-  } finally {
-    syncBtn.classList.remove("syncing");
-  }
-}
-
-// 更新同步状态
-async function updateSyncStatus() {
-  const syncStatus = document.getElementById("syncStatus");
-  const data = await chrome.storage.local.get([
-    "lastSyncTime",
-    "lastSyncStatus",
-  ]);
-
-  if (data.lastSyncTime && data.lastSyncStatus === "success") {
-    const date = new Date(data.lastSyncTime);
-    const timeStr = formatRelativeTime(date);
-
-    syncStatus.classList.add("synced");
-    syncStatus.querySelector(".status-text").textContent =
-      `已同步 (${timeStr})`;
-  } else if (data.lastSyncStatus === "failed") {
-    syncStatus.querySelector(".status-text").textContent = "同步失败";
-  } else {
-    syncStatus.querySelector(".status-text").textContent = "未同步";
-  }
-}
-
-// 格式化相对时间
-function formatRelativeTime(date) {
-  const now = new Date();
-  const diff = Math.floor((now - date) / 1000); // 秒
-
-  if (diff < 60) return "刚刚";
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}天前`;
-
-  return date.toLocaleDateString("zh-CN");
-}
-
-// 从GitHub删除图片
-async function deleteImageFromGitHub(imageUrl) {
-  if (!imageUrl || !githubConfig.token) {
-    return false;
-  }
-
-  try {
-    // 从URL中提取文件路径
-    const urlParts = imageUrl.split("/");
-    const fileName = urlParts[urlParts.length - 1];
-    const filePath = `prompts/${fileName}`;
-
-    // 获取文件的SHA（需要先获取文件信息）
-    const getResponse = await fetch(
-      `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/${filePath}`,
-      {
-        headers: {
-          Authorization: `token ${githubConfig.token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      },
-    );
-
-    if (!getResponse.ok) {
-      console.error("获取文件信息失败:", getResponse.statusText);
-      return false;
-    }
-
-    const fileInfo = await getResponse.json();
-    const sha = fileInfo.sha;
-
-    // 发送删除请求
-    const deleteResponse = await fetch(
-      `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/${filePath}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `token ${githubConfig.token}`,
-          Accept: "application/vnd.github.v3+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: `Delete image: ${fileName}`,
-          sha: sha,
-        }),
-      },
-    );
-
-    if (!deleteResponse.ok) {
-      const errorData = await deleteResponse.json();
-      console.error("删除图片失败:", errorData);
-      showToast("删除图片失败，请检查GitHub配置", "error");
-      return false;
-    }
-
-    console.log("图片删除成功:", fileName);
-    return true;
-  } catch (error) {
-    console.error("删除图片时发生错误:", error);
-    showToast("删除图片时发生错误", "error");
-    return false;
-  }
-}
-
-// 上传图片到GitHub
-async function uploadImageToGitHub(imageFile, promptId) {
-  console.log("=== 开始上传图片 ===");
-  console.log("图片文件:", imageFile);
-  console.log("提示词ID:", promptId);
-  console.log("GitHub配置:", {
-    owner: githubConfig.owner,
-    repo: githubConfig.repo,
-    token: githubConfig.token ? "***" : "",
-    hasConfig: !!githubConfig.token,
-  });
-
-  if (!imageFile || !githubConfig.token) {
-    console.error("=== 上传失败：配置不完整 ===");
-    showToast("GitHub配置不完整，无法上传图片", "error");
-    return null;
-  }
-
-  try {
-    // 读取图片文件为Base64
-    console.log("=== 读取图片文件 ===");
-    const base64Image = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        console.log(
-          "图片读取完成，大小:",
-          (reader.result.length / 1024).toFixed(2),
-          "KB",
-        );
-        resolve(reader.result.split(",")[1]);
-      };
-      reader.onerror = (error) => {
-        console.error("图片读取失败:", error);
-        reject(error);
-      };
-      reader.readAsDataURL(imageFile);
-    });
-
-    // 生成文件名
-    const timestamp = Date.now();
-    const extension = imageFile.name.split(".").pop();
-    const fileName = `prompt_${promptId}_${timestamp}.${extension}`;
-    const filePath = `prompts/${fileName}`;
-    console.log("=== 准备上传 ===");
-    console.log("文件名:", fileName);
-    console.log("文件路径:", filePath);
-
-    // 发送上传请求
-    console.log("=== 发送GitHub API请求 ===");
-    const apiUrl = `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/${filePath}`;
-    console.log("API URL:", apiUrl);
-
-    const response = await fetch(apiUrl, {
-      method: "PUT",
-      headers: {
-        Authorization: `token ${githubConfig.token}`,
-        Accept: "application/vnd.github.v3+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message: `Add image for prompt: ${promptId}`,
-        content: base64Image,
-        encoding: "base64",
-      }),
-    });
-
-    console.log("=== API响应 ===");
-    console.log("状态码:", response.status);
-    console.log("状态文本:", response.statusText);
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("上传图片失败:", errorData);
-      showToast(
-        `上传图片失败: ${errorData.message || response.statusText}`,
-        "error",
-      );
-      return null;
-    }
-
-    const data = await response.json();
-    console.log("=== 上传成功 ===");
-    console.log("响应数据:", data);
-
-    const imageUrl = data.content.download_url;
-    console.log("图片URL:", imageUrl);
-    showToast("图片上传成功", "success");
-    return imageUrl;
-  } catch (error) {
-    console.error("=== 上传图片时发生错误 ===", error);
-    showToast(`上传图片时发生错误: ${error.message}`, "error");
-    return null;
-  }
-}
-
-// 处理图片上传
-function handleImageUpload(file, previewElement, removeButton, type = "add") {
-  if (!file) return;
-
-  // 验证文件类型
-  if (!file.type.startsWith("image/")) {
-    showToast("请上传图片文件", "error");
-    return;
-  }
-
-  // 验证文件大小（最大2MB）
-  if (file.size > 2 * 1024 * 1024) {
-    showToast("图片大小不能超过2MB", "error");
-    return;
-  }
-
-  // 显示图片预览
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    previewElement.innerHTML = `
-      <img src="${e.target.result}" alt="预览图片" class="preview-image" />
-      <button type="button" class="remove-image-btn">×</button>
-    `;
-    removeButton.style.display = "inline-flex";
-
-    // 保存当前上传的图片
-    if (type === "add") {
-      currentUploadedImage = file;
-    } else if (type === "edit") {
-      currentEditUploadedImage = file;
-    }
-
-    // 绑定移除按钮事件
-    const removeBtn = previewElement.querySelector(".remove-image-btn");
-    if (removeBtn) {
-      removeBtn.addEventListener("click", () => {
-        removeUploadedImage(previewElement, removeButton, type);
-        if (type === "add") {
-          currentUploadedImage = null;
-        } else if (type === "edit") {
-          currentEditUploadedImage = null;
-        }
-      });
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-// 移除上传的图片
-function removeUploadedImage(previewElement, removeButton) {
-  if (previewElement) {
-    previewElement.innerHTML =
-      '<span class="image-placeholder">拖拽图片到此处或点击上传</span>';
-  }
-  if (removeButton) {
-    removeButton.style.display = "none";
-  }
-}
-
-// 显示提示信息
-function showToast(message, type = "success", duration = 3000) {
-  const toast = document.getElementById("toast");
-  const toastContent = document.getElementById("toastContent");
-
-  if (!toast || !toastContent) return;
-
-  // 清除之前的类型
-  toast.className = "toast";
-  // 添加新类型
-  toast.classList.add(type);
-  // 设置内容
-  toastContent.textContent = message;
-  // 显示提示
-  toast.classList.add("show");
-
-  // 定时隐藏
-  setTimeout(() => {
-    toast.classList.add("hide");
-    setTimeout(() => {
-      toast.classList.remove("show", "hide");
-    }, 300);
-  }, duration);
-}
-
 // 绑定事件
 function bindEvents() {
-  // 标签切换
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const tab = btn.dataset.tab;
-
-      document
-        .querySelectorAll(".tab-btn")
-        .forEach((b) => b.classList.remove("active"));
-      document
-        .querySelectorAll(".tab-content")
-        .forEach((c) => c.classList.remove("active"));
-
-      btn.classList.add("active");
-      document.getElementById(tab + "Tab").classList.add("active");
-    });
-  });
-
-  // 侧边栏折叠功能
-  const sidebarToggle = document.getElementById("sidebarToggle");
-  const sidebar = document.getElementById("sidebar");
-  if (sidebarToggle && sidebar) {
-    sidebarToggle.addEventListener("click", () => {
-      sidebar.classList.toggle("collapsed");
-    });
-  }
-
-  // 管理页面切换功能
-  document.querySelectorAll(".sidebar-item").forEach((item) => {
-    item.addEventListener("click", () => {
-      const page = item.dataset.page;
-
-      // 更新侧边栏项激活状态
-      document
-        .querySelectorAll(".sidebar-item")
-        .forEach((i) => i.classList.remove("active"));
-      item.classList.add("active");
-
-      // 切换管理页面
-      document
-        .querySelectorAll(".manage-page")
-        .forEach((p) => p.classList.remove("active"));
-      document.getElementById(page + "Page").classList.add("active");
-    });
-  });
-
   // 使用标签页事件
-  document.getElementById("clearBtn").addEventListener("click", clearSelection);
-  document.getElementById("copyBtn").addEventListener("click", copyPrompts);
-
-  // 管理标签页事件
-  document
-    .getElementById("addLibraryBtn")
-    .addEventListener("click", addLibrary);
-  document
-    .getElementById("addCategoryBtn")
-    .addEventListener("click", addCategory);
-  document.getElementById("addPromptBtn").addEventListener("click", addPrompt);
-
-  // 提示词库选择器事件 - 分类管理页面
-  const librarySelectorCategories = document.getElementById(
-    "librarySelectorCategories",
-  );
-  if (librarySelectorCategories) {
-    librarySelectorCategories.addEventListener("change", (e) => {
-      switchLibrary(e.target.value);
-    });
+  const clearBtn = document.getElementById("clearBtn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", clearSelection);
   }
 
-  // 提示词库选择器事件 - 提示词管理页面
-  const librarySelectorPrompts = document.getElementById(
-    "librarySelectorPrompts",
-  );
-  if (librarySelectorPrompts) {
-    librarySelectorPrompts.addEventListener("change", (e) => {
-      switchLibrary(e.target.value);
+  const copyBtn = document.getElementById("copyBtn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", copyPrompts);
+  }
+
+  // 标签输入框事件
+  const tagInput = document.getElementById("tagInput");
+  if (tagInput) {
+    tagInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        addTemporaryTag(e.target.value);
+        e.target.value = "";
+      }
     });
   }
 
@@ -1801,376 +649,228 @@ function bindEvents() {
     });
   }
 
-  // 提示词筛选事件
-  document
-    .getElementById("promptCategoryFilter")
-    .addEventListener("change", (e) => {
-      categoryFilter = e.target.value;
-      filterPrompts();
-    });
+  // 同步按钮事件
+  const syncBtn = document.getElementById("syncBtn");
+  if (syncBtn) {
+    syncBtn.addEventListener("click", syncToFeishu);
+  }
 
-  document.getElementById("promptSearch").addEventListener("input", (e) => {
-    searchKeyword = e.target.value.trim();
-    filterPrompts();
-  });
-
-  // 全选复选框事件
-  document
-    .getElementById("selectAllPrompts")
-    .addEventListener("change", toggleSelectAll);
-
-  // 删除选中按钮事件
-  document
-    .getElementById("deleteSelectedBtn")
-    .addEventListener("click", deleteSelectedPrompts);
-
-  // 分页事件
-  document
-    .getElementById("prevPage")
-    .addEventListener("click", () => changePage("prev"));
-
-  document
-    .getElementById("nextPage")
-    .addEventListener("click", () => changePage("next"));
-
-  document
-    .getElementById("pageSize")
-    .addEventListener("change", (e) => changePageSize(e.target.value));
-
-  // 回车键提交
-  document
-    .getElementById("newLibraryInput")
-    .addEventListener("keypress", (e) => {
-      if (e.key === "Enter") addLibrary();
-    });
-
-  document
-    .getElementById("newCategoryInput")
-    .addEventListener("keypress", (e) => {
-      if (e.key === "Enter") addCategory();
-    });
-
-  document
-    .getElementById("newPromptInput")
-    .addEventListener("keypress", (e) => {
-      if (e.key === "Enter") addPrompt();
-    });
-
-  // 设置按钮
+  // 设置按钮事件
   const settingsBtn = document.getElementById("settingsBtn");
   if (settingsBtn) {
     settingsBtn.addEventListener("click", () => {
-      chrome.runtime.openOptionsPage();
+      chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
     });
   }
-
-  // 同步按钮
-  document.getElementById("syncBtn").addEventListener("click", syncToFeishu);
-
-  // 监听存储变化
-  chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === "local") {
-      loadData().then(() => renderAll());
-    }
-  });
-
-  // 分类编辑弹窗事件
-  document
-    .getElementById("closeEditCategoryModal")
-    .addEventListener("click", closeEditCategoryModal);
-  document
-    .getElementById("cancelEditCategoryBtn")
-    .addEventListener("click", closeEditCategoryModal);
-  document
-    .getElementById("saveEditCategoryBtn")
-    .addEventListener("click", saveEditCategory);
-
-  // 提示词编辑弹窗事件
-  document
-    .getElementById("closeEditPromptModal")
-    .addEventListener("click", closeEditPromptModal);
-  document
-    .getElementById("cancelEditPromptBtn")
-    .addEventListener("click", closeEditPromptModal);
-  document
-    .getElementById("saveEditPromptBtn")
-    .addEventListener("click", saveEditPrompt);
-
-  // 提示词库编辑弹窗事件
-  document
-    .getElementById("closeEditLibraryModal")
-    .addEventListener("click", closeEditLibraryModal);
-  document
-    .getElementById("cancelEditLibraryBtn")
-    .addEventListener("click", closeEditLibraryModal);
-  document
-    .getElementById("saveEditLibraryBtn")
-    .addEventListener("click", saveEditLibrary);
-
-  // 点击弹窗外部关闭弹窗
-  document
-    .getElementById("editCategoryModal")
-    .addEventListener("click", (e) => {
-      if (e.target === document.getElementById("editCategoryModal")) {
-        closeEditCategoryModal();
-      }
-    });
-
-  document.getElementById("editPromptModal").addEventListener("click", (e) => {
-    if (e.target === document.getElementById("editPromptModal")) {
-      closeEditPromptModal();
-    }
-  });
-
-  document.getElementById("editLibraryModal").addEventListener("click", (e) => {
-    if (e.target === document.getElementById("editLibraryModal")) {
-      closeEditLibraryModal();
-    }
-  });
-
-  // 标签输入框事件
-  const tagInput = document.getElementById("tagInput");
-  if (tagInput) {
-    // 回车键添加标签
-    tagInput.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const text = tagInput.value.trim();
-        if (text) {
-          addTemporaryTag(text);
-          tagInput.value = "";
-        }
-      }
-    });
-
-    // 退格键删除最后一个标签
-    tagInput.addEventListener("keydown", (e) => {
-      if (e.key === "Backspace" && tagInput.value === "") {
-        if (temporaryTags.length > 0) {
-          const lastTag = temporaryTags[temporaryTags.length - 1];
-          removeTemporaryTag(lastTag.id);
-        } else if (selectedPrompts.length > 0) {
-          const lastPromptId = selectedPrompts[selectedPrompts.length - 1];
-          togglePromptSelection(lastPromptId);
-        }
-      }
-    });
-
-    // 点击其他地方时将输入文字转为标签
-    tagInput.addEventListener("blur", () => {
-      const text = tagInput.value.trim();
-      if (text) {
-        addTemporaryTag(text);
-        tagInput.value = "";
-      }
-    });
-  }
-
-  // 点击其他地方隐藏右键菜单
-  document.addEventListener("click", (e) => {
-    if (
-      !e.target.closest(".context-menu") &&
-      !e.target.closest(".selected-tag")
-    ) {
-      hideContextMenu();
-    }
-  });
-
-  // 设置图片上传处理器
-  setupImageUploadHandlers();
 }
 
-// HTML转义
+// 切换提示词库
+async function switchLibrary(libraryId) {
+  if (libraryId === currentLibraryId) return;
+
+  currentLibraryId = libraryId;
+  loadCurrentLibraryData();
+
+  // 清空选中的提示词，因为它们属于其他库
+  selectedPrompts = [];
+
+  await saveData();
+  renderAll();
+}
+
+// 同步到飞书
+async function syncToFeishu() {
+  const syncBtn = document.getElementById("syncBtn");
+  const syncStatus = document.getElementById("syncStatus");
+
+  if (syncBtn) syncBtn.classList.add("syncing");
+  if (syncStatus) syncStatus.classList.add("syncing");
+
+  try {
+    const result = await chrome.storage.local.get("feishuConfig");
+    const feishuConfig = result.feishuConfig || {};
+
+    if (
+      !feishuConfig.appId ||
+      !feishuConfig.appSecret ||
+      !feishuConfig.tableId
+    ) {
+      throw new Error("飞书配置不完整");
+    }
+
+    // 获取访问令牌
+    const tokenResponse = await fetch(
+      "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal/",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          app_id: feishuConfig.appId,
+          app_secret: feishuConfig.appSecret,
+        }),
+      },
+    );
+
+    if (!tokenResponse.ok) {
+      throw new Error(`获取令牌失败: ${tokenResponse.statusText}`);
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.app_access_token;
+
+    // 构建提示词数据
+    const currentLibrary = libraries.find((lib) => lib.id === currentLibraryId);
+    const libraryName = currentLibrary ? currentLibrary.name : "默认提示词库";
+
+    const promptData = prompts.map((prompt) => {
+      const category = categories.find((cat) => cat.id === prompt.categoryId);
+      return {
+        fields: {
+          name: [{ text: prompt.text }],
+          chinese: [{ text: prompt.chinese || "" }],
+          remark: [{ text: prompt.remark || "" }],
+          category: [{ text: category ? category.name : "未分类" }],
+          library: [{ text: libraryName }],
+          image_url: prompt.imageUrl
+            ? [{ text: prompt.imageUrl }]
+            : [{ text: "" }],
+        },
+      };
+    });
+
+    // 清空现有记录
+    const clearResponse = await fetch(
+      `https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appId}/tables/${feishuConfig.tableId}/records/batch_delete`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          records: [],
+        }),
+      },
+    );
+
+    if (!clearResponse.ok) {
+      throw new Error(`清空记录失败: ${clearResponse.statusText}`);
+    }
+
+    // 批量创建记录（每次最多100条）
+    for (let i = 0; i < promptData.length; i += 100) {
+      const batchData = promptData.slice(i, i + 100);
+
+      const createResponse = await fetch(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appId}/tables/${feishuConfig.tableId}/records/batch_create`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            records: batchData,
+          }),
+        },
+      );
+
+      if (!createResponse.ok) {
+        throw new Error(`创建记录失败: ${createResponse.statusText}`);
+      }
+    }
+
+    if (syncStatus) {
+      syncStatus.innerHTML =
+        '<span class="status-dot success"></span><span class="status-text">同步成功</span>';
+      setTimeout(() => {
+        syncStatus.innerHTML =
+          '<span class="status-dot"></span><span class="status-text">未同步</span>';
+      }, 3000);
+    }
+  } catch (error) {
+    console.error("同步失败:", error);
+    if (syncStatus) {
+      syncStatus.innerHTML =
+        '<span class="status-dot error"></span><span class="status-text">同步失败</span>';
+      setTimeout(() => {
+        syncStatus.innerHTML =
+          '<span class="status-dot"></span><span class="status-text">未同步</span>';
+      }, 3000);
+    }
+  } finally {
+    if (syncBtn) syncBtn.classList.remove("syncing");
+    if (syncStatus) syncStatus.classList.remove("syncing");
+  }
+}
+
+// 更新同步状态
+function updateSyncStatus() {
+  const syncStatus = document.getElementById("syncStatus");
+  if (syncStatus) {
+    syncStatus.innerHTML =
+      '<span class="status-dot"></span><span class="status-text">未同步</span>';
+  }
+}
+
+// 显示图片预览弹窗
+function showImagePreviewModal(imageUrl) {
+  const modal = document.getElementById("imagePreviewModal");
+  const modalImage = document.getElementById("imagePreviewModalImg");
+  const closeModal = document.getElementById("closeImagePreviewModal");
+
+  if (modal && modalImage) {
+    modalImage.src = imageUrl;
+    modal.style.display = "flex";
+  }
+
+  if (closeModal) {
+    closeModal.addEventListener("click", () => {
+      if (modal) {
+        modal.style.display = "none";
+      }
+    });
+  }
+
+  // 点击模态框外部关闭
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        modal.style.display = "none";
+      }
+    });
+  }
+}
+
+// 转义HTML特殊字符
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
 }
 
-// 图片上传相关函数
-function setupImageUploadHandlers() {
-  // 新建提示词图片上传
-  const newPromptImageBtn = document.getElementById("newPromptImageBtn");
-  const newPromptImageInput = document.getElementById("newPromptImage");
-  const newPromptImagePreview = document.getElementById(
-    "newPromptImagePreview",
-  );
-  const newPromptImageRemove = document.getElementById("newPromptImageRemove");
+// 显示提示信息
+function showToast(message, type = "success") {
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `
+    <div class="toast-content">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        ${type === "success" ? '<polyline points="20 6 9 17 4 12"></polyline>' : '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>'}
+      </svg>
+      ${message}
+    </div>
+  `;
 
-  if (newPromptImageBtn && newPromptImageInput && newPromptImagePreview) {
-    newPromptImageBtn.addEventListener("click", () => {
-      newPromptImageInput.click();
-    });
+  document.body.appendChild(toast);
+  toast.classList.add("show");
 
-    newPromptImageInput.addEventListener("change", (e) => {
-      handleImageUpload(
-        e.target.files[0],
-        newPromptImagePreview,
-        newPromptImageRemove,
-        "add",
-      );
-    });
-
-    setupDragAndDrop(
-      newPromptImagePreview,
-      newPromptImageInput,
-      newPromptImageRemove,
-      "add",
-    );
-  }
-
-  // 编辑提示词图片上传
-  const editPromptImageBtn = document.getElementById("editPromptImageBtn");
-  const editPromptImageInput = document.getElementById("editPromptImage");
-  const editPromptImagePreview = document.getElementById(
-    "editPromptImagePreview",
-  );
-  const editPromptImageRemove = document.getElementById(
-    "editPromptImageRemove",
-  );
-
-  if (editPromptImageBtn && editPromptImageInput && editPromptImagePreview) {
-    editPromptImageBtn.addEventListener("click", () => {
-      editPromptImageInput.click();
-    });
-
-    editPromptImageInput.addEventListener("change", (e) => {
-      handleImageUpload(
-        e.target.files[0],
-        editPromptImagePreview,
-        editPromptImageRemove,
-        "edit",
-      );
-    });
-
-    setupDragAndDrop(
-      editPromptImagePreview,
-      editPromptImageInput,
-      editPromptImageRemove,
-      "edit",
-    );
-  }
-
-  // 图片预览弹窗关闭
-  const imagePreviewModal = document.getElementById("imagePreviewModal");
-  if (imagePreviewModal) {
-    imagePreviewModal.addEventListener("click", (e) => {
-      if (e.target === imagePreviewModal) {
-        imagePreviewModal.classList.remove("show");
-      }
-    });
-  }
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => {
+      document.body.removeChild(toast);
+    }, 300);
+  }, 3000);
 }
-
-function setupDragAndDrop(
-  previewElement,
-  inputElement,
-  removeButton,
-  type = "add",
-) {
-  previewElement.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    previewElement.classList.add("dragover");
-  });
-
-  previewElement.addEventListener("dragleave", () => {
-    previewElement.classList.remove("dragover");
-  });
-
-  previewElement.addEventListener("drop", (e) => {
-    e.preventDefault();
-    previewElement.classList.remove("dragover");
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleImageUpload(files[0], previewElement, removeButton, type);
-    }
-  });
-}
-
-async function handleImageUpload(
-  file,
-  previewElement,
-  removeButton,
-  type = "add",
-) {
-  if (!file) return;
-
-  // 验证文件类型
-  if (!file.type.startsWith("image/")) {
-    showToast("请选择图片文件", "error");
-    return;
-  }
-
-  // 验证文件大小 (最大5MB)
-  if (file.size > 5 * 1024 * 1024) {
-    showToast("图片大小不能超过5MB", "error");
-    return;
-  }
-
-  try {
-    // 显示预览
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      previewElement.innerHTML = `<img src="${e.target.result}" alt="预览" />`;
-      previewElement.classList.add("has-image");
-      removeButton.style.display = "block";
-    };
-    reader.readAsDataURL(file);
-
-    // 保存当前上传的图片
-    if (type === "add") {
-      currentUploadedImage = file;
-    } else if (type === "edit") {
-      currentEditUploadedImage = file;
-    }
-  } catch (error) {
-    console.error("图片预览失败:", error);
-    showToast("图片预览失败", "error");
-  }
-}
-
-function removeUploadedImage(previewElement, removeButton, type = "add") {
-  previewElement.innerHTML =
-    '<span class="image-placeholder">拖拽图片到此处或点击上传</span>';
-  previewElement.classList.remove("has-image");
-  removeButton.style.display = "none";
-
-  // 清除当前上传的图片
-  if (type === "add") {
-    currentUploadedImage = null;
-  } else if (type === "edit") {
-    currentEditUploadedImage = null;
-  }
-}
-
-function showImagePreviewModal(imageUrl) {
-  const modal = document.getElementById("imagePreviewModal");
-  const img = document.getElementById("imagePreviewModalImg");
-
-  if (modal && img) {
-    img.src = imageUrl;
-    modal.classList.add("show");
-  }
-}
-
-function hideImagePreviewModal() {
-  const modal = document.getElementById("imagePreviewModal");
-  if (modal) {
-    modal.classList.remove("show");
-  }
-}
-
-// 点击弹窗背景关闭弹窗
-document.getElementById("imagePreviewModal").addEventListener("click", (e) => {
-  if (e.target.id === "imagePreviewModal") {
-    hideImagePreviewModal();
-  }
-});
-
-// 点击关闭按钮关闭弹窗
-document
-  .getElementById("closeImagePreviewModal")
-  .addEventListener("click", () => {
-    hideImagePreviewModal();
-  });

@@ -41,7 +41,7 @@
       "description": "添加到提示词库"
     }
   },
-  "options_page": "options.html",
+  "options_page": "settings.html",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

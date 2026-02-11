@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>设置 - AI提示词管理器</title>
+    <link rel="stylesheet" href="public.css" />
+    <link rel="stylesheet" href="sidepanel.css" />
+    <style>
+      .settings-container {
+        display: flex;
+        height: 100vh;
+        min-height: 100vh;
+      }
+
+      .settings-sidebar {
+        position: sticky;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 220px;
+        background: white;
+        border-right: 1px solid var(--gray-200);
+        display: flex;
+        flex-direction: column;
+        transition: all 0.3s ease;
+        z-index: 100;
+        overflow-y: auto;
+      }
+
+      .settings-sidebar.collapsed {
+        width: 60px;
+      }
+
+      .settings-sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        border-bottom: 1px solid var(--gray-200);
+      }
+
+      .settings-sidebar-header h3 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--gray-800);
+        margin: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .settings-sidebar.collapsed .settings-sidebar-header h3 {
+        opacity: 0;
+        width: 0;
+        overflow: hidden;
+      }
+
+      .sidebar-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+        color: var(--gray-600);
+      }
+
+      .sidebar-toggle:hover {
+        background: var(--gray-100);
+        color: var(--gray-800);
+      }
+
+      .settings-sidebar.collapsed .sidebar-toggle {
+        transform: rotate(180deg);
+      }
+
+      .settings-sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .sidebar-menu {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      .sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        color: var(--gray-700);
+        border-left: 3px solid transparent;
+      }
+
+      .sidebar-item:hover {
+        background: var(--gray-50);
+        color: var(--primary);
+      }
+
+      .sidebar-item.active {
+        background: #f5f3ff;
+        color: var(--primary);
+        border-left-color: var(--primary);
+      }
+
+      .sidebar-item svg {
+        flex-shrink: 0;
+      }
+
+      .sidebar-item span {
+        font-size: 14px;
+        font-weight: 500;
+        transition: opacity 0.3s ease;
+      }
+
+      .settings-sidebar.collapsed .sidebar-item span {
+        opacity: 0;
+        width: 0;
+        overflow: hidden;
+      }
+
+      .settings-sidebar.collapsed .sidebar-item {
+        justify-content: center;
+        padding: 12px 8px;
+      }
+
+      .settings-content {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        background: var(--gray-50);
+      }
+
+      .settings-page {
+        display: none;
+      }
+
+      .settings-page.active {
+        display: block;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .settings-page h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--gray-900);
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--gray-200);
+      }
+
+      @media (max-width: 768px) {
+        .settings-sidebar {
+          width: 100%;
+          height: auto;
+          position: relative;
+          border-right: none;
+          border-bottom: 1px solid var(--gray-200);
+        }
+
+        .settings-sidebar.collapsed {
+          width: 100%;
+        }
+
+        .settings-sidebar.collapsed .sidebar-header h3 {
+          opacity: 1;
+          width: auto;
+          overflow: visible;
+        }
+
+        .settings-sidebar.collapsed .sidebar-item span {
+          opacity: 1;
+          width: auto;
+          overflow: visible;
+        }
+
+        .settings-sidebar.collapsed .sidebar-item {
+          justify-content: flex-start;
+          padding: 12px 16px;
+        }
+
+        .settings-sidebar-header {
+          padding: 12px 16px;
+        }
+
+        .sidebar-toggle {
+          display: none;
+        }
+
+        .settings-content {
+          padding: 16px;
+        }
+
+        .settings-page h2 {
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="settings-container">
+      <!-- 左侧边栏 -->
+      <div class="settings-sidebar" id="settingsSidebar">
+        <div class="settings-sidebar-header">
+          <h3>设置</h3>
+          <button class="sidebar-toggle" id="sidebarToggle">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+        </div>
+        <div class="settings-sidebar-content">
+          <ul class="sidebar-menu">
+            <li class="sidebar-item active" data-page="libraries">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+              </svg>
+              <span>提示词库管理</span>
+            </li>
+            <li class="sidebar-item" data-page="categories">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
+              </svg>
+              <span>分类管理</span>
+            </li>
+            <li class="sidebar-item" data-page="prompts">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              <span>提示词管理</span>
+            </li>
+            <li class="sidebar-item" data-page="plugin">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="3"></circle>
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                ></path>
+              </svg>
+              <span>插件设置</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 右侧内容区域 -->
+      <div class="settings-content">
+        <!-- 提示词库管理页面 -->
+        <div class="settings-page active" id="librariesPage">
+          <h2>提示词库管理</h2>
+          <!-- 添加提示词库 -->
+          <div class="card">
+            <div class="card-body">
+              <div class="input-group">
+                <input
+                  type="text"
+                  id="newLibraryInput"
+                  placeholder="输入提示词库名称..."
+                  class="form-input"
+                />
+                <button class="btn btn-success" id="addLibraryBtn">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  添加提示词库
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 提示词库管理表格 -->
+          <div class="card">
+            <h3 class="card-title">提示词库列表</h3>
+            <div class="table-container">
+              <table class="manage-table" id="librariesTable">
+                <thead>
+                  <tr>
+                    <th>提示词库名</th>
+                    <th>内容统计</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="libraryList"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分类管理页面 -->
+        <div class="settings-page" id="categoriesPage">
+          <h2>分类管理</h2>
+          <!-- 提示词库选择器 -->
+          <div class="card">
+            <div class="card-body">
+              <div class="input-group">
+                <label for="librarySelectorCategories">当前提示词库:</label>
+                <select id="librarySelectorCategories" class="form-select">
+                  <!-- 提示词库选项将通过JavaScript动态生成 -->
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 添加分类 -->
+          <div class="card">
+            <div class="card-body">
+              <div class="input-group">
+                <input
+                  type="text"
+                  id="newCategoryInput"
+                  placeholder="输入分类名称..."
+                  class="form-input"
+                />
+                <button class="btn btn-success" id="addCategoryBtn">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  添加分类
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 分类管理表格 -->
+          <div class="card">
+            <h3 class="card-title">分类列表</h3>
+            <div class="table-container">
+              <table class="manage-table" id="categoriesTable">
+                <thead>
+                  <tr>
+                    <th>分类名</th>
+                    <th>提示词数量</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="categoriesList"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 提示词管理页面 -->
+        <div class="settings-page" id="promptsPage">
+          <h2>提示词管理</h2>
+          <!-- 提示词库选择器 -->
+          <div class="card">
+            <div class="card-body">
+              <div class="input-group">
+                <label for="librarySelectorPrompts">当前提示词库:</label>
+                <select id="librarySelectorPrompts" class="form-select">
+                  <!-- 提示词库选项将通过JavaScript动态生成 -->
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 添加提示词 -->
+          <div class="card">
+            <h3 class="card-title">添加提示词</h3>
+            <div class="card-body">
+              <div class="input-group">
+                <select id="promptCategorySelect" class="form-select">
+                  <option value="">选择分类...</option>
+                </select>
+                <input
+                  type="text"
+                  id="newPromptInput"
+                  placeholder="输入提示词内容..."
+                  class="form-input"
+                />
+              </div>
+              <div class="input-group">
+                <input
+                  type="text"
+                  id="newPromptChinese"
+                  placeholder="输入中文解释..."
+                  class="form-input"
+                />
+              </div>
+              <div class="input-group">
+                <input
+                  type="text"
+                  id="newPromptRemark"
+                  placeholder="输入备注..."
+                  class="form-input"
+                />
+                <button class="btn btn-success" id="addPromptBtn">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  添加提示词
+                </button>
+              </div>
+              <div class="input-group">
+                <label for="newPromptImage">缩略图</label>
+                <div class="image-upload-container">
+                  <div class="image-preview" id="newPromptImagePreview">
+                    <span class="image-placeholder"
+                      >拖拽图片到此处或点击上传</span
+                    >
+                  </div>
+                  <input
+                    type="file"
+                    id="newPromptImage"
+                    accept="image/*"
+                    style="display: none"
+                  />
+                  <button type="button" class="btn btn-secondary" id="newPromptImageBtn">
+                    选择图片
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    id="newPromptImageRemove"
+                    style="display: none"
+                  >
+                    移除图片
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 提示词管理表格 -->
+          <div class="card">
+            <h3 class="card-title">提示词列表</h3>
+            <!-- 筛选控件 -->
+            <div class="filter-controls">
+              <div class="filter-group">
+                <select id="promptCategoryFilter" class="form-select">
+                  <option value="">全部分类</option>
+                </select>
+              </div>
+              <div class="search-group">
+                <input
+                  type="text"
+                  id="promptSearch"
+                  placeholder="搜索提示词..."
+                  class="form-input"
+                />
+              </div>
+              <button
+                class="btn btn-danger"
+                id="deleteSelectedBtn"
+                style="display: none"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path
+                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                  ></path>
+                </svg>
+                删除选中
+              </button>
+            </div>
+
+            <div class="table-container">
+              <table class="manage-table" id="promptsTable">
+                <thead>
+                  <tr>
+                    <th style="width: 40px; text-align: center">
+                      <input type="checkbox" id="selectAllPrompts" />
+                    </th>
+                    <th>提示词</th>
+                    <th>中文解释</th>
+                    <th>备注</th>
+                    <th>所属分类</th>
+                    <th style="width: 80px">缩略图</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="promptsManageList"></tbody>
+              </table>
+            </div>
+
+            <!-- 分页控件 -->
+            <div class="pagination-controls">
+              <div class="pagination-info">
+                显示 <span id="paginationInfo">0-0 共 0</span>
+              </div>
+              <div class="pagination-actions">
+                <select
+                  id="pageSize"
+                  class="form-select"
+                  style="width: auto; margin-bottom: 0"
+                >
+                  <option value="20">20条/页</option>
+                  <option value="50">50条/页</option>
+                  <option value="100">100条/页</option>
+                </select>
+                <button class="pagination-btn" id="prevPage" disabled>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                </button>
+                <span class="page-info">第 <span id="currentPage">1</span> 页</span>
+                <button class="pagination-btn" id="nextPage" disabled>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 插件设置页面 -->
+        <div class="settings-page" id="pluginPage">
+          <h2>插件设置</h2>
+          <!-- 飞书API配置 -->
+          <div class="card">
+            <h3 class="card-title">飞书API配置</h3>
+            <div class="card-body">
+              <div class="input-group">
+                <label for="feishuAppId">应用ID (App ID)</label>
+                <input
+                  type="text"
+                  id="feishuAppId"
+                  placeholder="cli_xxxxxxxxxxxxxxxx"
+                  class="form-input"
+                />
+              </div>
+              <div class="input-group">
+                <label for="feishuAppSecret">应用密钥 (App Secret)</label>
+                <input
+                  type="password"
+                  id="feishuAppSecret"
+                  placeholder="输入应用密钥"
+                  class="form-input"
+                />
+              </div>
+              <div class="input-group">
+                <label for="feishuBitableId">多维表格ID (Bitable ID)</label>
+                <input
+                  type="text"
+                  id="feishuBitableId"
+                  placeholder="bascnxxxxxxxxxxxxxx"
+                  class="form-input"
+                />
+              </div>
+              <div class="input-group">
+                <label for="feishuTableId">表格ID (Table ID)</label>
+                <input
+                  type="text"
+                  id="feishuTableId"
+                  placeholder="tblxxxxxxxxxxxxxx"
+                  class="form-input"
+                />
+              </div>
+              <div class="input-group">
+                <label for="feishuSyncInterval">同步间隔 (分钟)</label>
+                <input
+                  type="number"
+                  id="feishuSyncInterval"
+                  placeholder="30"
+                  min="5"
+                  class="form-input"
+                />
+              </div>
+              <button class="btn btn-primary" id="saveFeishuSettings">
+                保存飞书配置
+              </button>
+            </div>
+          </div>
+
+          <!-- GitHub图床配置 -->
+          <div class="card">
+            <h3 class="card-title">GitHub图床配置</h3>
+            <div class="card-body">
+              <div class="input-group">
+                <label for="githubOwner">GitHub用户名</label>
+                <input
+                  type="text"
+                  id="githubOwner"
+                  placeholder="your-username"
+                  class="form-input"
+                />
+              </div>
+              <div class="input-group">
+                <label for="githubRepo">仓库名称</label>
+                <input
+                  type="text"
+                  id="githubRepo"
+                  placeholder="your-repo"
+                  class="form-input"
+                />
+              </div>
+              <div class="input-group">
+                <label for="githubToken">Personal Access Token</label>
+                <input
+                  type="password"
+                  id="githubToken"
+                  placeholder="ghp_xxxxxxxxxxxxxxxx"
+                  class="form-input"
+                />
+              </div>
+              <button class="btn btn-primary" id="saveGithubSettings">
+                保存GitHub配置
+              </button>
+            </div>
+          </div>
+
+          <!-- 同步设置 -->
+          <div class="card">
+            <h3 class="card-title">同步设置</h3>
+            <div class="card-body">
+              <div class="input-group">
+                <label>
+                  <input type="checkbox" id="autoSync" />
+                  启用自动同步
+                </label>
+              </div>
+              <div class="input-group">
+                <label>
+                  <input type="checkbox" id="syncOnStartup" />
+                  启动时自动同步
+                </label>
+              </div>
+              <button class="btn btn-primary" id="testSync">
+                测试同步
+              </button>
+              <button class="btn btn-success" id="syncToFeishu">
+                同步到飞书
+              </button>
+              <button class="btn btn-secondary" id="syncFromFeishu">
+                从飞书同步
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑提示词库弹窗 -->
+    <div id="editLibraryModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>编辑提示词库</h3>
+          <button id="closeEditLibraryModal" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editLibraryId" />
+          <div class="input-group">
+            <label for="editLibraryName">提示词库名称</label>
+            <input
+              type="text"
+              id="editLibraryName"
+              placeholder="输入提示词库名称..."
+              class="form-input"
+            />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelEditLibrary">取消</button>
+          <button class="btn btn-primary" id="saveEditLibrary">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑分类弹窗 -->
+    <div id="editCategoryModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>编辑分类</h3>
+          <button id="closeEditCategoryModal" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editCategoryId" />
+          <div class="input-group">
+            <label for="editCategoryName">分类名称</label>
+            <input
+              type="text"
+              id="editCategoryName"
+              placeholder="输入分类名称..."
+              class="form-input"
+            />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelEditCategory">取消</button>
+          <button class="btn btn-primary" id="saveEditCategory">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑提示词弹窗 -->
+    <div id="editPromptModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>编辑提示词</h3>
+          <button id="closeEditPromptModal" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editPromptId" />
+          <input type="hidden" id="editPromptLibraryId" />
+          <div class="input-group">
+            <label for="editPromptCategory">所属分类</label>
+            <select id="editPromptCategory" class="form-select">
+              <option value="">选择分类...</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="editPromptText">提示词内容</label>
+            <input
+              type="text"
+              id="editPromptText"
+              placeholder="输入提示词内容..."
+              class="form-input"
+            />
+          </div>
+          <div class="input-group">
+            <label for="editPromptChinese">中文解释</label>
+            <input
+              type="text"
+              id="editPromptChinese"
+              placeholder="输入中文解释..."
+              class="form-input"
+            />
+          </div>
+          <div class="input-group">
+            <label for="editPromptRemark">备注</label>
+            <input
+              type="text"
+              id="editPromptRemark"
+              placeholder="输入备注..."
+              class="form-input"
+            />
+          </div>
+          <div class="input-group">
+            <label for="editPromptImage">缩略图</label>
+            <div class="image-upload-container">
+              <div class="image-preview" id="editPromptImagePreview">
+                <span class="image-placeholder"
+                  >拖拽图片到此处或点击上传</span
+                >
+              </div>
+              <input
+                type="file"
+                id="editPromptImage"
+                accept="image/*"
+                style="display: none"
+              />
+              <button type="button" class="btn btn-secondary" id="editPromptImageBtn">
+                选择图片
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                id="editPromptImageRemove"
+                style="display: none"
+              >
+                移除图片
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelEditPrompt">取消</button>
+          <button class="btn btn-primary" id="saveEditPrompt">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 提示消息 -->
+    <div id="toast" class="toast">
+      <div class="toast-content">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span id="toastMessage">操作成功</span>
+      </div>
+    </div>
+
+    <script src="settings.js"></script>
+  </body>
+</html>
